@@ -122,6 +122,7 @@ import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.search.domain.ExternalLinks
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_collapsed
@@ -218,6 +219,8 @@ fun DetailScreen(
     nudge: NotificationNudgeViewModel? = null,
     /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
     onOpenNextPick: ((MediaId) -> Unit)? = null,
+    /** The app's content language (`MetadataLocale`), which the Wikipedia link opens in. Tests leave the default. */
+    linkLanguage: String = DEFAULT_LINK_LANGUAGE,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
@@ -268,9 +271,9 @@ fun DetailScreen(
                     // snackbar appears; more when a long title or a large font wraps it.
                     val bottomPadding = snackbarClearance.bottomPadding
                     if (maxWidth >= EXPANDED_BREAKPOINT) {
-                        DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                        DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick, linkLanguage)
                     } else {
-                        DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                        DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick, linkLanguage)
                     }
                 }
             }
@@ -414,6 +417,7 @@ private fun DetailCompact(
     callbacks: DetailCallbacks,
     bottomPadding: Dp,
     onOpenNextPick: ((MediaId) -> Unit)?,
+    linkLanguage: String,
 ) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
@@ -434,7 +438,7 @@ private fun DetailCompact(
                     CompletedNextPickEntry(state, onOpenNextPick)
                 }
             }
-            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks, linkLanguage), inset)
             item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
     }
@@ -449,6 +453,7 @@ private fun DetailExpanded(
     callbacks: DetailCallbacks,
     bottomPadding: Dp,
     onOpenNextPick: ((MediaId) -> Unit)?,
+    linkLanguage: String,
 ) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
@@ -495,7 +500,7 @@ private fun DetailExpanded(
                     }
                 }
             }
-            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks, linkLanguage), bodyColumn)
             item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
     }
@@ -526,6 +531,8 @@ private class DetailListContext(
     val details: MediaDetails,
     val seasons: SeasonsController,
     val callbacks: DetailCallbacks,
+    /** The app's content language for the Wikipedia link (see [DEFAULT_LINK_LANGUAGE]). */
+    val linkLanguage: String,
 )
 
 /** Everything below the hero/actions, shared by both layouts, as list items laid out with [inset]. */
@@ -582,6 +589,11 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         item(key = "credits", contentType = "credits") {
             CreditsSection(details, callbacks.credits, modifier = section)
         }
+    }
+
+    item(key = "links", contentType = "links") {
+        val language = context.linkLanguage
+        ExternalLinksRow(remember(details, language) { ExternalLinks.forTitle(details.id, details.anchors, language) }, modifier = section)
     }
 
     // A movie's watched state is the primary action at the top (#721), so the body has no toggle of its own.

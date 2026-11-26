@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.search.domain.ExternalLinks
 import com.codingpit.muviss.feature.search.domain.Filmography
 import com.codingpit.muviss.feature.search.domain.FilmographyEntry
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -77,6 +79,8 @@ fun PersonScreen(
     viewModel: PersonViewModel,
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    /** The app's content language (`MetadataLocale`), which the Wikipedia link opens in. Tests leave the default. */
+    linkLanguage: String = DEFAULT_LINK_LANGUAGE,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
@@ -85,7 +89,7 @@ fun PersonScreen(
         when {
             state.loading && person == null -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(MuvissSpacing.xl))
             state.error != null && person == null -> ErrorState(message = state.error!!, onRetry = viewModel::load, modifier = Modifier.align(Alignment.Center))
-            person != null && filmography != null -> PersonBody(person, filmography, state.libraryIds, onOpenDetail)
+            person != null && filmography != null -> PersonBody(person, filmography, state.libraryIds, onOpenDetail, linkLanguage)
         }
         BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
     }
@@ -97,6 +101,7 @@ internal fun PersonBody(
     filmography: Filmography,
     libraryIds: Set<MediaId>,
     onOpenDetail: (MediaId) -> Unit,
+    linkLanguage: String = DEFAULT_LINK_LANGUAGE,
 ) {
     var onActingTab by rememberSaveable(person.id.toString()) { mutableStateOf(filmography.startsOnActing) }
     val tab = if (onActingTab) filmography.acting else filmography.crew
@@ -109,6 +114,9 @@ internal fun PersonBody(
     ) {
         item(key = "header", contentType = "header") { PersonHeader(person, inset) }
         person.biography?.let { bio -> item(key = "bio", contentType = "bio") { Biography(bio, inset) } }
+        item(key = "links", contentType = "links") {
+            ExternalLinksRow(remember(person, linkLanguage) { ExternalLinks.forPerson(person.id, person.anchors, linkLanguage) }, modifier = inset)
+        }
 
         if (filmography.knownFor.isNotEmpty()) {
             item(key = "knownFor", contentType = "knownFor") { KnownFor(filmography.knownFor, libraryIds, onOpenDetail, inset) }
