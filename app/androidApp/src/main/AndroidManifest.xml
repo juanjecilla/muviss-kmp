@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Only network use: TMDB metadata lookups and optional Sentry crash
          reports. Declared explicitly instead of relying on it arriving via
@@ -87,6 +89,27 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/muviss_widget_info" />
         </receiver>
+
+        <!-- AppFunctions (EPIC 701): the assistant surface, bound by the system through this name. KSP generates
+             MuvissAppFunctionService from BaseMuvissAppFunctionService; the v2 property points at the generated
+             function list in assets/. The schema property is declared by the library's own manifest. -->
+        <service
+            android:name=".appfunctions.MuvissAppFunctionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"
+            tools:targetApi="36">
+            <property
+                android:name="android.app.appfunctions.v2"
+                android:value="muviss_app_function_service.xml" />
+
+            <intent-filter>
+                <action android:name="android.app.appfunctions.AppFunctionService" />
+            </intent-filter>
+        </service>
+
+        <property
+            android:name="android.app.appfunctions.app_metadata"
+            android:resource="@xml/app_metadata" />
     </application>
 
 </manifest>

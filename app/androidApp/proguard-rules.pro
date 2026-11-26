@@ -174,3 +174,10 @@
 # which exception it was. Sentry deobfuscates stack frames through the mapping but not free text, so an
 # obfuscated name would read as "a". `-keepnames` only keeps names; it does not keep the classes.
 -keepnames class * extends java.lang.Throwable
+
+# AppFunctions (EPIC 701): the system binds the generated service by name and reads its function inventory through
+# reflection, so R8 keeps the service, the entry point and the generated inventory. A quiet R8 is not a working R8:
+# the release build still needs a device check (see the follow-up issue).
+-keep class com.codingpit.muviss.appfunctions.MuvissAppFunctionService { <init>(); }
+-keep class com.codingpit.muviss.appfunctions.BaseMuvissAppFunctionService { *; }
+-keep class com.codingpit.muviss.appfunctions.*AppFunctionInventory { *; }

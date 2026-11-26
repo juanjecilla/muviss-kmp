@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AppFunctions app metadata (EPIC 701): the app-level description an agent reads before choosing a function.
+     Written by hand from the beta01 guidance (appfn:instructions, not appfn:description). The exact root element
+     and namespace are NOT yet checked against a device: see the device-check follow-up issue. -->
+<appfn:appFunctionAppMetadata xmlns:appfn="http://schemas.android.com/appfunctions">
+    <appfn:displayDescription>Muviss: track movies and TV shows, and see what to watch next.</appfn:displayDescription>
+    <appfn:instructions>Muviss keeps the user's movie and TV library on the device. Start with getWatchNext for what the user should watch next, or getLibrary for the whole library. To add a title the user does not have yet, call searchTitles first and then addToLibrary with the mediaId it returns. Ratings are whole numbers from 1 to 10. tickEpisode and markMovieWatched only mark things as seen, never as unseen; they need a title already in the library. Titles and episodes are identified by strings such as tmdb:tv:1399 and tmdb:tv:1399/1/2.</appfn:instructions>
+</appfn:appFunctionAppMetadata>
