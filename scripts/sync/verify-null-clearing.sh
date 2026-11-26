@@ -59,6 +59,11 @@ code=$(upsert seed $T1 ',"rating":8'); rc=$?
 read -r T R <<< "$(row)"
 echo "1. seed rating 8           -> HTTP $code, title: $T, rating: $R"
 [ "$rc" -eq 0 ] || { echo "  <-- the seed write was refused"; fail=1; }
+# A leftover probe row stamped after T1 makes the trigger discard the seed with
+# an HTTP success, so only the values read back prove the seed landed (#1025).
+if [ "$rc" -eq 0 ] && { [ "$T" != seed ] || [ "$R" != 8 ]; }; then
+  echo "  <-- the seed did not land (title $T, rating $R): a leftover probe row has a newer timestamp"; fail=1
+fi
 
 upsert no-rating-key $T2 '' >/dev/null; rc=$?
 read -r T R <<< "$(row)"

@@ -32,7 +32,8 @@ cat > "$BIN/adb" <<'EOF'
 #!/bin/bash
 echo "adb $*" >> "$CALLS"
 case "$*" in
-  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n'
+    [ -n "${FAKE_TWO_DEVICES:-}" ] && printf 'emulator-5556\tdevice\n' ;;
   *"exec-out run-as"*"databases/muviss.db")
     [ -n "${FAKE_DEVICE_DB:-}" ] && cat "$FAKE_DEVICE_DB" || exit 1 ;;
   *) exit 1 ;;
@@ -73,6 +74,8 @@ case "$args" in
     route=rest-count; code=${CURL_COUNT:-200}; body=''
     [ -n "$headers" ] && printf 'Content-Range: 0-0/%s\r\n' "${CURL_COUNT_TOTAL:-7}" > "$headers" ;;
   *"-X DELETE"*) route=rest-delete; code=${CURL_DELETE:-204}; body='' ;;
+  *"select=title,rating"*) route=rest-row; code=200; body=${CURL_ROW:-'[{"title":"seed","rating":8}]'} ;;
+  *"select=*"*) route=rest-read; code=${CURL_READ_CODE:-200}; body=${CURL_READ:-[]} ;;
   *"episode_progress?select"*) route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]} ;;
   *"/rest/v1/"*) route=rest-write; code=${CURL_WRITE:-201}; body='' ;;
   *) route=other; code=200; body='' ;;
@@ -262,6 +265,22 @@ FAKE_DEVICE_DB="$RESERVED_ONLY_DB" run "" sync-status.sh
 if [ "$RC" -eq 0 ] && grep -q "^  none$" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
   pass "only the reserved row present: the list says none, as for a device that never pulled"
 else fail "reserved row only: rc=$RC out=$OUT"; fi
+
+echo "adb with two devices and no MUVISS_DEVICE stops the script"
+FAKE_TWO_DEVICES=1 lib "adb_ shell true; echo after-adb"
+if [ "$RC" -ne 0 ] && ! grep -q "after-adb" <<<"$OUT" && ! grep -q "adb shell" "$CALLS"; then
+  pass "the ambiguity exits the script before any adb call"
+else fail "two devices: rc=$RC out=$OUT calls=$(cat "$CALLS")"; fi
+
+echo "verify-null-clearing checks the seed before it trusts the rest"
+CURL_ROW='[{"title":"old-title","rating":null}]' run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that did not land (stale probe row) fails and says so"
+else fail "stale probe row: rc=$RC out=$OUT"; fi
+CURL_ROW='[{"title":"seed","rating":8}]' run local verify-null-clearing.sh
+if ! grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that landed prints no seed warning"
+else fail "landed seed warned: out=$OUT"; fi
 
 echo "every sync script parses"
 
