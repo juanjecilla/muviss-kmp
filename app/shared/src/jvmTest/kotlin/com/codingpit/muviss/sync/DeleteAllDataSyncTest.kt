@@ -35,6 +35,10 @@ class DeleteAllDataSyncTest {
     @Test
     fun erase_then_sync_pulls_nothing_and_signing_back_in_restores_the_library() = runTest {
         val server = FakeSupabaseServer()
+        // The account has paid before it signs in (the RevenueCat webhook writes the entitlement row,
+        // and the next token carries the sync_until claim, ADR 0019). Without it the first sync is
+        // NotEntitled, which is the gate working, not the erase.
+        server.grantEntitlement("alice")
         val device = newApp(server)
         device.signInWithOAuth()
         device.addMovie()
