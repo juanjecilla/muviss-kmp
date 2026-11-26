@@ -222,6 +222,78 @@ class TriageUndoLedgerTest {
         assertFalse(failing.entryPresent(endedShow.id))
     }
 
+    // --- #902: a retry keeps the stamp of the entry its claim is about, never another entry's ---
+
+    @Test
+    fun a_retry_against_the_original_entry_keeps_its_stamp() = runTest {
+        val h = harness(endedDetails)
+        h.record(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val first = h.repository.decisions.value.getValue(endedShow.id)
+
+        h.record.retry(first).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry)
+        assertEquals(assertNotNull(first.entryAddedAtEpochMs), retried.entryAddedAtEpochMs)
+    }
+
+    @Test
+    fun a_retry_after_the_person_removed_the_entry_and_added_a_replacement_keeps_the_original_stamp() = runTest {
+        val h = harness(endedDetails)
+        h.record(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val originalStamp = assertNotNull(h.repository.decisions.value.getValue(endedShow.id).entryAddedAtEpochMs)
+        // The verdict's entry is removed, and the person adds the title back: a replacement with a new stamp.
+        h.collection.remove(endedShow.id)
+        h.collection.add(endedDetails)
+        val replacementStamp = assertNotNull(h.collection.summaries.value.single().addedAtEpochMs)
+        assertFalse(originalStamp == replacementStamp)
+
+        // A retry of the verdict, its earlier attempt having left ticks unfinished, runs against the replacement.
+        h.record.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry)
+        assertEquals(originalStamp, retried.entryAddedAtEpochMs, "the claim stays on the verdict's own entry, not the replacement")
+
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertTrue(h.entryPresent(endedShow.id), "undo must not remove the replacement the person added")
+        assertEquals(listOf(endedShow.id), h.collection.removed, "only the person's own removal is on record")
+    }
+
+    @Test
+    fun a_retry_after_the_entry_was_removed_and_nothing_re_added_claims_the_entry_its_add_makes() = runTest {
+        val h = harness(endedDetails)
+        h.record(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val originalStamp = assertNotNull(h.repository.decisions.value.getValue(endedShow.id).entryAddedAtEpochMs)
+        h.collection.remove(endedShow.id)
+
+        // The retry's add is the one that makes the entry now, so the claim follows that entry's new stamp.
+        h.record.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        val currentStamp = assertNotNull(h.collection.summaries.value.single { it.mediaId == endedShow.id }.addedAtEpochMs)
+        assertTrue(retried.createdEntry)
+        assertEquals(currentStamp, retried.entryAddedAtEpochMs)
+        assertFalse(originalStamp == currentStamp)
+    }
+
+    @Test
+    fun a_retry_whose_claim_has_a_stamp_keeps_that_stamp_against_a_present_entry() = runTest {
+        // The claim is written directly so its stamp is a value the test chooses: a present entry's stamp
+        // (1000, from the fake) must never be read into a decision whose claim already names another stamp.
+        val h = harness(endedDetails)
+        h.repository.record(
+            TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true)
+                .copy(entryAddedAtEpochMs = 42L),
+        )
+        h.collection.add(endedDetails) // a present entry, stamped 1000 by the fake
+
+        h.record.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        assertEquals(42L, h.repository.decisions.value.getValue(endedShow.id).entryAddedAtEpochMs)
+    }
+
     // --- #792: an undo and a verdict on the same title do not interleave ---
 
     @Test

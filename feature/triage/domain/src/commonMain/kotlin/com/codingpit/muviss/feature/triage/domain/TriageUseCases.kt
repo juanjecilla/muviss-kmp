@@ -107,10 +107,21 @@ class RecordDecisionUseCase(
         // attempt recorded is kept, because that attempt's add made the entry and the entry being there now says
         // nothing about who added it. Otherwise the library is read now. That covers a first attempt, and a retry
         // whose earlier attempt failed before its add: it recorded no claim, and its add is still the one that counts.
-        val claimed = stored.createdEntry || collectionApi.observeMembership(mediaId).first() == null
+        val absentBeforeAdd = collectionApi.observeMembership(mediaId).first() == null
+        val claimed = stored.createdEntry || absentBeforeAdd
 
         collectionApi.add(details)
-        val stamp = if (claimed) addedAtOf(mediaId) else null
+        // #902: the stamp belongs to the entry the claim is about. This attempt's add made a new entry, so that entry's
+        // stamp is read. Otherwise the add found an entry already there, which may be a replacement the person added
+        // after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
+        // replacement's (undo then sees a different stamp and leaves the replacement alone). A claim recorded before
+        // the stamp column has no stamp to keep, so it reads the present entry's as it always did.
+        val stamp = when {
+            absentBeforeAdd -> addedAtOf(mediaId)
+            stored.createdEntry && stored.entryAddedAtEpochMs != null -> stored.entryAddedAtEpochMs
+            stored.createdEntry -> addedAtOf(mediaId)
+            else -> null
+        }
 
         // Recorded once the add has landed and before the ticks run, so a tick that fails midway still leaves undo the
         // full list. Only episodes not already seen are listed, so undo can never un-tick a tick the person made.
