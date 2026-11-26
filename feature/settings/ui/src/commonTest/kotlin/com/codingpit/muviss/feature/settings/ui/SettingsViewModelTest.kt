@@ -121,6 +121,7 @@ class SettingsViewModelTest {
     private fun viewModel(
         repository: FakeSettingsRepository,
         remote: RemoteConfig = DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
+        flags: FakeFeatureFlags = FakeFeatureFlags(),
     ) = SettingsViewModel(
         settingsObservations(ObserveSettingsUseCase(repository), remote),
         SettingsActions(
@@ -134,7 +135,7 @@ class SettingsViewModelTest {
             SetDeviceBackupEnabledUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
-        FakeFeatureFlags(),
+        flags,
         DeleteAllDataUseCase(eraser),
         FakeClock(1_791_374_400_000L), // 2026-10-07T12:00:00Z
     )
@@ -255,6 +256,21 @@ class SettingsViewModelTest {
 
         assertEquals(false, vm.state.value.tickAnimations)
         assertEquals(true, vm.state.value.animationsEnabled)
+    }
+
+    @Test
+    fun onCountSpecialsToggled_sets_the_per_device_flag_and_the_row_follows_it() = runTest {
+        // #938: off by default, and the switch writes the flag the progress reads take (ADR 0038).
+        val flags = FakeFeatureFlags()
+        val vm = viewModel(FakeSettingsRepository(), flags = flags)
+        advanceUntilIdle()
+        assertEquals(false, vm.state.value.countSpecialsTowardProgress)
+
+        vm.onCountSpecialsToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(true, flags.countSpecials.value)
+        assertEquals(true, vm.state.value.countSpecialsTowardProgress)
     }
 
     @Test
@@ -390,6 +406,11 @@ private class FakeFeatureFlags : FeatureFlags {
     override val completionPromptEnabled: Flow<Boolean> = MutableStateFlow(true)
 
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
+    val countSpecials = MutableStateFlow(false)
+    override val countSpecialsTowardProgress: Flow<Boolean> = countSpecials
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) {
+        countSpecials.value = enabled
+    }
 
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) {
         snoozePeriod.value = period

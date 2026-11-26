@@ -4,6 +4,7 @@ import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.Season
 
 /**
  * Pure helpers over a show's season/episode structure, used to turn a verdict
@@ -17,7 +18,7 @@ import com.codingpit.muviss.models.MediaType
  */
 internal fun MediaDetails.airedEpisodesInOrder(todayEpochDay: Long): List<Episode> {
     if (type != MediaType.TV) return emptyList()
-    return seasons
+    return regularSeasons()
         .sortedBy { it.number }
         .flatMap { season -> season.episodes.sortedBy { it.episodeNumber } }
         .filter { it.hasAiredBy(todayEpochDay) }
@@ -33,6 +34,13 @@ internal fun MediaDetails.firstAiredEpisode(todayEpochDay: Long): Episode? = air
 
 /** The most recent aired episode — the boundary "caught up" means. */
 internal fun MediaDetails.lastAiredEpisode(todayEpochDay: Long): Episode? = airedEpisodesInOrder(todayEpochDay).lastOrNull()
+
+/**
+ * Seasons 1 onward. Triage never ticks a special (#938): a Watching verdict would otherwise tick one, which is
+ * not "next", and a caught-up verdict would tick specials the setting may not count. An aired special left unseen
+ * under a caught-up verdict is what the Detail "Special unseen" state reports.
+ */
+internal fun MediaDetails.regularSeasons(): List<Season> = seasons.filter { it.number >= 1 }
 
 // A local val rather than an inline null-check because Kotlin can't smart-cast
 // a nullable property declared in another module (`:models`).
