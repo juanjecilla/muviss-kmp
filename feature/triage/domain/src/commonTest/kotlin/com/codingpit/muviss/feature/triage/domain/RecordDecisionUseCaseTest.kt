@@ -225,7 +225,8 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptySet(), h.progress.seen.value, "the verdict's ticks are taken back")
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
         assertEquals(emptyMap(), h.repository.decisions.value)
     }
 
@@ -277,7 +278,7 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
     }
 
     @Test

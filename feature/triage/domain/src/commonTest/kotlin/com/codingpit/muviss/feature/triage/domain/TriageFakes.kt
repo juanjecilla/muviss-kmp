@@ -138,8 +138,14 @@ internal class FakeProgressApi : ProgressApi {
         this.seen.value = if (seen) this.seen.value + episodeId else this.seen.value - episodeId
     }
 
-    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
-    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+    // Derived from the live viewings, as the repository derives them: a viewing's time is the suffix of its id.
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = plays.map { all ->
+        all.values.filter { it.show == mediaId }.groupingBy { it }.eachCount()
+    }
+
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = plays.map { all ->
+        all.filter { it.value == episodeId }.keys.map { EpisodePlay(episodeId, it.substringAfterLast('@').toLong()) }
+    }
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
 

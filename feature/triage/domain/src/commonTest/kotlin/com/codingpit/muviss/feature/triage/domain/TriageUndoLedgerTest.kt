@@ -294,6 +294,75 @@ class TriageUndoLedgerTest {
         assertTrue(firstEpisode in b.progress.seen.value)
     }
 
+    // --- #790 on the owned path: an entry the verdict created is undone by its viewings too ---
+
+    @Test
+    fun owned_entry_with_a_later_rewatch_keeps_the_rewatch_and_the_entry() = runTest {
+        val h = harness(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow() // the verdict creates the entry
+        h.progress.recordRewatch(firstEpisode, rewatchAt)
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode), h.progress.plays.value)
+        assertTrue(firstEpisode in h.progress.seen.value, "the rewatch keeps the episode seen")
+        assertTrue(h.entryPresent(ongoingShow.id), "the person watched the title since the verdict, so the entry stays")
+        assertEquals(emptyList(), h.progress.cleared, "no path clears the whole title any more")
+    }
+
+    @Test
+    fun owned_entry_with_no_rewatch_is_removed_with_only_the_verdicts_viewings() = runTest {
+        val h = harness(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertFalse(h.entryPresent(ongoingShow.id))
+        assertEquals(emptyMap(), h.progress.plays.value)
+        assertFalse(firstEpisode in h.progress.seen.value)
+        assertEquals(emptyList(), h.progress.cleared)
+    }
+
+    @Test
+    fun owned_entry_keeps_progress_that_was_on_the_title_before_the_verdict() = runTest {
+        val h = harness(ongoingDetails)
+        // Progress from an earlier life of the title, written before the decision: the verdict did not write it.
+        val beforeTheVerdict = NOW_EPOCH_MS - 1_000L
+        h.progress.recordRewatch(firstEpisode, beforeTheVerdict)
+        h.record(ongoingShow, TriageVerdict.CAUGHT_UP).getOrThrow() // ticks only the second aired episode
+
+        h.undo(ongoingShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, beforeTheVerdict) to firstEpisode), h.progress.plays.value)
+        assertEquals(setOf(firstEpisode), h.progress.seen.value)
+        assertFalse(h.entryPresent(ongoingShow.id), "no viewing was made since the decision, so the entry the verdict made goes")
+    }
+
+    @Test
+    fun owned_entry_retried_then_undone_with_no_rewatch_is_removed() = runTest {
+        val h = harness(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        h.record.retry(h.repository.decisions.value.getValue(ongoingShow.id)).getOrThrow()
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertFalse(h.entryPresent(ongoingShow.id))
+        assertEquals(emptyMap(), h.progress.plays.value)
+    }
+
+    @Test
+    fun owned_entry_retried_then_undone_with_a_later_rewatch_keeps_the_rewatch_and_the_entry() = runTest {
+        val h = harness(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        h.record.retry(h.repository.decisions.value.getValue(ongoingShow.id)).getOrThrow()
+        h.progress.recordRewatch(firstEpisode, rewatchAt)
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode), h.progress.plays.value)
+        assertTrue(h.entryPresent(ongoingShow.id))
+    }
+
     // --- #791: the claim is read right before the add, and a retry claims what its own add makes ---
 
     @Test

@@ -179,11 +179,17 @@ class RecordDecisionUseCase(
  * recorded at decision time (#902). A title the person removed and added again
  * while the undo was pending has a new stamp, so it stays.
  *
- * Ticks are reversed by viewing, not by episode (#790). Undo removes exactly the
- * viewings the verdict wrote ([TriageDecision.tickedPlayIds]) through
+ * Ticks are reversed by viewing, not by episode (#790), on every path. Undo removes
+ * exactly the viewings the verdict wrote ([TriageDecision.tickedPlayIds]) through
  * [ProgressApi.removePlay]. An episode the person has since rewatched keeps that
- * rewatch and stays seen; an episode with no viewings left is un-ticked. When the
- * entry is the verdict's own, its progress goes with it, as before.
+ * rewatch and stays seen; an episode with no viewings left is un-ticked.
+ *
+ * This holds for an entry the verdict created too. Progress that was on the title
+ * before the verdict is kept, because the verdict did not write it: it is what a
+ * title removed earlier, with its ticks, comes back with. The entry is removed only
+ * when no viewing of the title was made at or after the decision. A viewing made
+ * since then means the person has engaged with the title, so the entry stays with
+ * it, and nothing they did is removed.
  *
  * Residual: the sync merge of near-duplicate plays (`RemoteApplier.mergeDuplicatePlays`,
  * five minutes) can tombstone the verdict's viewing on another device before undo
@@ -205,12 +211,11 @@ class UndoDecisionUseCase(
             val ownsEntry = stored.createdEntry &&
                 stored.entryAddedAtEpochMs != null &&
                 currentAddedAt(mediaId) == stored.entryAddedAtEpochMs
-            if (ownsEntry) {
-                progressApi.clearProgress(mediaId)
-                collectionApi.remove(mediaId)
-            } else {
-                stored.tickedPlayIds.forEach { progressApi.removePlay(it) }
-            }
+            // Every path takes back the verdict's viewings and only those. The owned path used to clear the whole
+            // title here, which also erased a rewatch the person made after the verdict.
+            stored.tickedPlayIds.forEach { progressApi.removePlay(it) }
+            // Removed after the viewings, and only when the person has not watched the title since the decision.
+            if (ownsEntry && !watchedSince(mediaId, stored.decidedAtEpochMs)) collectionApi.remove(mediaId)
         }
         // Tombstoning last: once soft-deleted, observeDecision reads null and the claim can no longer be read.
         repository.restore(mediaId)
@@ -219,6 +224,11 @@ class UndoDecisionUseCase(
     private suspend fun currentAddedAt(mediaId: MediaId): Long? = collectionApi.observeSummaries().first()
         .firstOrNull { it.mediaId == mediaId }
         ?.addedAtEpochMs
+
+    /** Whether any live viewing of [mediaId] was made at or after [sinceEpochMs]. Read after the verdict's viewings are gone. */
+    private suspend fun watchedSince(mediaId: MediaId, sinceEpochMs: Long): Boolean = progressApi.observePlayCounts(mediaId).first().keys.any { episodeId ->
+        progressApi.observePlays(episodeId).first().any { it.watchedAtEpochMs >= sinceEpochMs }
+    }
 }
 
 /** Genre chips for the deck's filter row. An empty list simply means no chips. */
