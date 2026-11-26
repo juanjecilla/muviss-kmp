@@ -252,6 +252,14 @@ SET airedEpisodes = (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.
 WHERE mediaId IN :mediaIds
   AND airedEpisodes < (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0));
 
+-- Raises one title's snapshot aired count to [aired] when a tick outran it (ADR 0037, #1115). Never lowers it,
+-- never dirties the row: like `raiseAiredToSeen`, the count is derived from the catalog, not a user edit.
+raiseAiredTo:
+UPDATE collectionEntry
+SET airedEpisodes = :aired,
+    totalEpisodes = MAX(totalEpisodes, :aired)
+WHERE mediaId = :mediaId AND airedEpisodes < :aired;
+
 -- Every row goes back on the change-log: the first sync for an account, and
 -- "resync everything" (EPIC 39, ADR 0020).
 markAllDirty:

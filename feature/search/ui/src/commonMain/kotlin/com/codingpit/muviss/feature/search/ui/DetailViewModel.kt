@@ -504,6 +504,8 @@ class DetailViewModel(
         launchWrite {
             if (episodeId in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
+            // The displayed catalog can be newer than the stored one the tick reads, so raise the snapshot to it first (#1125).
+            _state.value.details?.let { progressApi.raiseAiredSnapshot(it.seasons, clock.todayEpochDay()) }
             progressApi.tickEpisode(episodeId, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
             offerUndo(
@@ -530,6 +532,7 @@ class DetailViewModel(
         launchWrite {
             if (episode in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
+            _state.value.details?.let { progressApi.raiseAiredSnapshot(it.seasons, clock.todayEpochDay()) }
             progressApi.tickEpisode(episode, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
             offerUndo(listOf(episode), UiText.Resource(Res.string.tick_next_seen, episode.seasonNumber, episode.episodeNumber), createdEntry = created)

@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.EpisodeId
@@ -7,6 +9,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Observes every progress row for a title, e.g. to render per-episode checkmarks. */
@@ -30,9 +33,64 @@ class ObserveSeenActivityEpochDaysUseCase(private val repository: ProgressReposi
     operator fun invoke(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
 }
 
-/** Ticks one episode. */
-class ToggleEpisodeSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
+/**
+ * Runs before progress is written for a title, so the library snapshot already covers what the write proves (ADR 0037,
+ * #1115, #1125). Before, not after: the snapshot is then never behind the seen count, even for the instant between two
+ * writes that a Library observer can see. [aired] is what the caller knows has aired (a bulk mark's displayed seasons,
+ * Detail's displayed catalog); it may be empty, and then the stored catalog alone supplies the count. [None] for
+ * callers that have no library behind them.
+ */
+fun interface AiredBeforeWrite {
+    suspend fun beforeWrite(mediaId: MediaId, aired: Collection<EpisodeId>)
+
+    companion object {
+        val None: AiredBeforeWrite = AiredBeforeWrite { _, _ -> }
+    }
+}
+
+/** [AiredBeforeWrite] for the aired episodes of [seasons] as of [todayEpochDay]: what a bulk mark or a Detail tick knows. */
+suspend fun AiredBeforeWrite.beforeAired(seasons: List<Season>, todayEpochDay: Long) {
+    val aired = EpisodeOrdering.airedBy(seasons, todayEpochDay)
+    aired.firstOrNull()?.let { beforeWrite(it.show, aired) }
+}
+
+/**
+ * Writes the aired count of a title's library snapshot, never lowering it. Implemented in `:data` over the
+ * `collectionEntry` table, the way the sync engine and the restore raise the same count.
+ */
+fun interface AiredSnapshotRaiser {
+    suspend fun raise(mediaId: MediaId, airedEpisodes: Int)
+}
+
+/** Ticks one episode. A tick on a title whose snapshot is stale raises the snapshot first; see [AiredBeforeWrite]. */
+class ToggleEpisodeSeenUseCase(
+    private val repository: ProgressRepository,
+    private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None,
+) {
+    suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) {
+        if (seen) beforeWrite.beforeWrite(episodeId.show, emptyList())
+        repository.setSeen(episodeId, seen)
+    }
+}
+
+/**
+ * Raises the library snapshot's aired count to the size of the union of three sets (ADR 0037, #1115, #1125): the stored
+ * catalog's aired episodes, the caller's [aired] episodes, and the title's seen episodes. The union, not the larger of
+ * two counts: a seen episode the catalog does not list still counts. A title with nothing known about it at all is
+ * left alone, and the read path floors the stored count at the seen count, so nothing can throw either way.
+ */
+class RaiseAiredBeforeWriteUseCase(
+    private val repository: ProgressRepository,
+    private val catalog: EpisodeCatalogStore,
+    private val raiser: AiredSnapshotRaiser,
+    private val clock: AppClock,
+) : AiredBeforeWrite {
+    override suspend fun beforeWrite(mediaId: MediaId, aired: Collection<EpisodeId>) {
+        val stored = catalog.load(listOf(mediaId))[mediaId]?.let { EpisodeOrdering.airedBy(it, clock.todayEpochDay()) }.orEmpty()
+        val seen = repository.observeForMedia(mediaId).first().filter { it.seen }.map { it.episodeId }
+        val count = (stored.toSet() + aired + seen).size
+        if (count > 0) raiser.raise(mediaId, count)
+    }
 }
 
 /**
@@ -49,13 +107,19 @@ class ToggleEpisodeSeenUseCase(private val repository: ProgressRepository) {
  * Episodes already seen are skipped rather than replayed: catching up on a
  * season is not a claim to have rewatched it.
  */
-class MarkSeasonAiredSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(season: Season, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
+class MarkSeasonAiredSeenUseCase(private val repository: ProgressRepository, private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None) {
+    suspend operator fun invoke(season: Season, todayEpochDay: Long): List<EpisodeId> {
+        beforeWrite.beforeAired(listOf(season), todayEpochDay)
+        return repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
+    }
 }
 
 /** [MarkSeasonAiredSeenUseCase] across every season — "mark the whole show seen". */
-class MarkShowAiredSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
+class MarkShowAiredSeenUseCase(private val repository: ProgressRepository, private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None) {
+    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> {
+        beforeWrite.beforeAired(seasons, todayEpochDay)
+        return repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
+    }
 }
 
 /**
@@ -77,8 +141,11 @@ class UndoBulkMarkUseCase(private val repository: ProgressRepository) {
 }
 
 /** "I watched this again": records another viewing without disturbing the ones before it. */
-class RecordPlayUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(episodeId: EpisodeId) = repository.recordPlay(episodeId)
+class RecordPlayUseCase(private val repository: ProgressRepository, private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None) {
+    suspend operator fun invoke(episodeId: EpisodeId) {
+        beforeWrite.beforeWrite(episodeId.show, emptyList())
+        repository.recordPlay(episodeId)
+    }
 }
 
 /** "I ticked that by mistake": drops the newest viewing only. */
@@ -92,8 +159,11 @@ class ClearPlaysUseCase(private val repository: ProgressRepository) {
 }
 
 /** Ticks episodes as seen, giving each one with no viewing yet a viewing stamped [watchedAtEpochMs] (#790). */
-class RecordFirstPlaysUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = repository.recordFirstPlays(episodeIds, watchedAtEpochMs)
+class RecordFirstPlaysUseCase(private val repository: ProgressRepository, private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None) {
+    suspend operator fun invoke(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) {
+        episodeIds.map { it.show }.distinct().forEach { beforeWrite.beforeWrite(it, emptyList()) }
+        repository.recordFirstPlays(episodeIds, watchedAtEpochMs)
+    }
 }
 
 /** Takes back one viewing by id, and only that one (#790). */
@@ -133,8 +203,15 @@ class ObserveRewatchTimestampsUseCase(private val repository: ProgressRepository
  * writes one first viewing per episode that has none, so an undo can drop
  * precisely those viewings.
  */
-class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.upToInclusive(seasons, target))
+class MarkPreviousSeenUseCase(
+    private val repository: ProgressRepository,
+    private val clock: AppClock,
+    private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None,
+) {
+    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
+        beforeWrite.beforeAired(seasons, clock.todayEpochDay())
+        return repository.recordPlaysForUnseen(EpisodeOrdering.upToInclusive(seasons, target))
+    }
 }
 
 /**
@@ -143,8 +220,11 @@ class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
  * writes progress through this rather than through [MarkPreviousSeenUseCase];
  * see [EpisodeOrdering.airedBy] for why the difference matters.
  */
-class MarkAllAiredSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long) = repository.setSeenBulk(EpisodeOrdering.airedBy(seasons, todayEpochDay), seen = true)
+class MarkAllAiredSeenUseCase(private val repository: ProgressRepository, private val beforeWrite: AiredBeforeWrite = AiredBeforeWrite.None) {
+    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long) {
+        beforeWrite.beforeAired(seasons, todayEpochDay)
+        repository.setSeenBulk(EpisodeOrdering.airedBy(seasons, todayEpochDay), seen = true)
+    }
 }
 
 /** Un-ticks everything for one title — used to take back a triage verdict. */

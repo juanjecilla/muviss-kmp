@@ -141,4 +141,6 @@ class ProgressTicks(
     val tickEpisode: TickEpisodeUseCase,
     val tickMovie: TickMovieUseCase,
     val detector: CompletionDetector,
+    /** The snapshot raise Detail calls with its displayed catalog before a tick (ADR 0037, #1125). */
+    val aired: AiredBeforeWrite,
 )
