@@ -12,6 +12,10 @@
 #                                   comment on "Release X.Y.Z", once per KEY
 #   back-merge.sh stale             notify for every back-merge PR open over a day
 #                                   env: NOW (ISO 8601, defaults to the clock)
+#   back-merge.sh pr-at SHA         the open back-merge PR into develop whose head is
+#                                   SHA, as "NUMBER BRANCH"; prints nothing when there
+#                                   is none. A push to main completes CI on the
+#                                   release merge commit, which names no PR (#1030).
 #
 # `decide` only merges a back-merge nobody touched: the PR head is still the
 # commit the release tag is on. A conflict resolved on the branch is code no one
@@ -83,9 +87,21 @@ stale() {
   return "$failed"
 }
 
+# A failed listing exits nonzero: a run that cannot see the PR must not read as
+# "nothing to merge" and stop for good.
+pr_at() {
+  local sha="$1" prs
+  [ -n "$sha" ] || { echo "usage: $0 pr-at SHA" >&2; return 2; }
+  prs="$(gh pr list --base develop --state open --limit 200 --json number,headRefName,headRefOid)" \
+    || { echo "could not list the open PRs into develop" >&2; return 1; }
+  jq -r --arg sha "$sha" \
+    '[.[] | select(.headRefOid == $sha and (.headRefName | test("^back-merge/v[0-9]")))] | .[0] // empty | "\(.number) \(.headRefName)"' <<<"$prs"
+}
+
 case "${1:-}" in
   decide) decide ;;
+  pr-at) pr_at "${2:-}" ;;
   notify) [ $# -eq 4 ] || { echo "usage: $0 notify X.Y.Z KEY MESSAGE" >&2; exit 2; }; notify "$2" "$3" "$4" ;;
   stale) stale ;;
-  *) echo "usage: $0 decide | notify X.Y.Z KEY MESSAGE | stale" >&2; exit 2 ;;
+  *) echo "usage: $0 decide | notify X.Y.Z KEY MESSAGE | stale | pr-at SHA" >&2; exit 2 ;;
 esac

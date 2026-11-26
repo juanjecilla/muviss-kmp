@@ -22,6 +22,12 @@ name: Back-merge
 # environment, which only runs on develop. A `workflow_run` job runs on the
 # default branch, so this one can read it; a workflow on another branch cannot.
 #
+# The approval waits on checks. For a back-merge the required checks are the
+# CI lanes of the push to main (its PR run skips them), so the run that completes
+# last is CI on that push: it is matched to its back-merge PR by head SHA
+# (back-merge.sh pr-at). A run that finds no PR exits quietly, as most main
+# pushes do.
+#
 # Runs from the default branch: it never executes the PR's code.
 on:
   workflow_run:
@@ -36,9 +42,14 @@ jobs:
     name: Approve and merge an untouched back-merge
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      startsWith(github.event.workflow_run.head_branch, 'back-merge/v') &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (
+        (github.event.workflow_run.event == 'pull_request' &&
+          startsWith(github.event.workflow_run.head_branch, 'back-merge/v')) ||
+        (github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.name == 'CI' &&
+          github.event.workflow_run.head_branch == 'main')
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # On the job, not the workflow: a run this job's `if` skips never enters the
@@ -79,10 +90,17 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT: ${{ github.event.workflow_run.event }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
           APP_LOGIN: app/${{ steps.app.outputs.app-slug }}
         run: |
           set -euo pipefail
+          if [ "$EVENT" = push ]; then
+            # CI on main: the back-merge is the open PR whose head is the tested commit.
+            found="$(scripts/release/back-merge.sh pr-at "$TESTED_SHA")"
+            [ -n "$found" ] || { echo "no open back-merge PR at $TESTED_SHA; nothing to do"; exit 0; }
+            BRANCH="${found#* }"
+          fi
           pr="$(gh pr list --head "$BRANCH" --base develop --state open \
             --json number,author,baseRefName,headRefName,headRefOid,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | .[0] // empty')"
           [ -n "$pr" ] || { echo "no open PR into develop for $BRANCH; nothing to do"; exit 0; }
