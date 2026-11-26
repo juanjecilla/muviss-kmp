@@ -127,6 +127,32 @@ class TasteProfileBackupTest {
     }
 
     @Test
+    fun `an unliked item is in the export as a tombstone`() = runTest {
+        val source = inMemoryDatabase()
+        write(source, ACTION, updatedAt = 2_000L, deleted = true)
+
+        val exported = Json.decodeFromString<MuvissDataExport>(exporter(source).exportData())
+
+        val item = exported.tasteProfile.single()
+        assertEquals(ACTION, item.id)
+        assertTrue(item.deleted)
+    }
+
+    @Test
+    fun `a backup taken after an unlike removes the item from a device that still has the like`() = runTest {
+        val source = inMemoryDatabase()
+        write(source, ACTION, updatedAt = 2_000L, deleted = true)
+        val backup = exporter(source).exportData()
+
+        val other = inMemoryDatabase()
+        write(other, ACTION, updatedAt = 1_000L)
+        restorer(other).restore(backup)
+
+        assertTrue(other.tasteProfileQueries.selectById(ACTION).awaitAsOneOrNull()!!.deleted)
+        assertTrue(other.tasteProfileQueries.selectAll().awaitAsList().isEmpty())
+    }
+
+    @Test
     fun `a backup from before the taste profile existed restores with none`() = runTest {
         val oldBackup = """{"formatVersion":2,"exportedAtEpochMs":1,"collection":[],"progress":[]}"""
 

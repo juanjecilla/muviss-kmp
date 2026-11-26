@@ -216,7 +216,7 @@ class SqlDelightBackupRestorer(
             label = row.label,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }

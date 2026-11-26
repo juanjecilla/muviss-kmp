@@ -174,7 +174,7 @@ class SqlDelightSettingsRepository(
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
             settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
-            tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
+            tasteProfile = exportQueries.tasteProfile.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
             mutedGenreChoice = exportQueries.mutedGenreChoice.select().awaitAsOneOrNull()?.toExport(),
             mutedGenres = exportQueries.mutedGenres.selectAll().awaitAsList().map { it.toExport() },
         )
@@ -248,6 +248,7 @@ class SqlDelightSettingsRepository(
         value = itemValue,
         label = label,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun EpisodePlayRow.toExport(): EpisodePlayExport = EpisodePlayExport(

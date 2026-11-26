@@ -39,6 +39,13 @@ WHERE deleted = 0
 ORDER BY kind ASC, label ASC, itemValue ASC;
 
 -- Does not filter `deleted` — callers decide (mirrors triageSnooze.selectById).
+-- Every decision, tombstones included, for the export: a backup carries an unlike so a device that still
+-- holds the live copy removes it on restore (ADR 0036, the same rule as mutedGenre.selectAll).
+selectAllIncludingDeleted:
+SELECT *
+FROM tasteProfile
+ORDER BY kind ASC, label ASC, itemValue ASC;
+
 selectById:
 SELECT *
 FROM tasteProfile
