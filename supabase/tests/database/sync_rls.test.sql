@@ -190,9 +190,10 @@ reset role;
 
 -- ------------------------------------------------------ taste profile (#586) ---
 
--- taste_profile (20261027000000_taste_profile.sql) is a single-owner table with
--- the flat `auth.uid() = user_id` policy, unlike the cowatch tables above. The
--- checks are the same claims, plus the LWW trigger, which the client relies on
+-- taste_profile (20261027000000_taste_profile.sql) is a single-owner table. Its
+-- policy is `auth.uid() = user_id` and a live `sync_until` claim (20261126000200,
+-- #279), so act_as's entitled claims pass it and the anon key is refused outright.
+-- The checks are the same claims, plus the LWW trigger, which the client relies on
 -- to keep a stale device from re-adding an item the other device removed.
 select ok(
   (select relrowsecurity from pg_class where oid = 'public.taste_profile'::regclass),
@@ -200,8 +201,8 @@ select ok(
 );
 select ok(
   exists (select 1 from pg_policies
-           where schemaname = 'public' and tablename = 'taste_profile' and policyname = 'own rows only'),
-  'and its own-rows policy'
+           where schemaname = 'public' and tablename = 'taste_profile' and policyname = 'own rows while entitled'),
+  'and its entitled own-rows policy'
 );
 select has_trigger('public', 'taste_profile', 'taste_profile_lww', 'taste_profile has the LWW / server_seq trigger');
 
@@ -281,7 +282,11 @@ reset role;
 select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
 set local role anon;
-select is((select count(*)::int from public.taste_profile), 0, 'anon reads no taste items');
+select throws_ok(
+  $$select count(*) from public.taste_profile$$,
+  '42501', null,
+  'anon cannot read taste items (no privilege, 20261126000100)'
+);
 select throws_ok(
   $$insert into public.taste_profile (user_id, id, kind, value, label, updated_at_epoch_ms)
     values ('00000000-0000-0000-0000-0000000000a1', 'genre:98', 'genre', '98', 'anon', 1000)$$,
