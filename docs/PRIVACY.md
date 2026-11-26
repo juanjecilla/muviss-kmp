@@ -141,6 +141,21 @@ address**; leave anything private out of it.
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
 
+## Assistants on Android
+
+On Android, a system assistant that holds the `EXECUTE_APP_FUNCTIONS` permission can call Muviss
+without opening it (Android's AppFunctions). Nothing reaches an assistant unless it makes such a call,
+and Muviss sends nothing to any assistant itself. When one asks, it can read what it needs to answer:
+your watch-next list, the titles in your library with their status and favorite flag, and how far you have got
+with a title you ask about. It can search the movie database, and it can add a title to your library,
+tick an aired episode as seen, mark a movie watched, set a favorite or rate a title in your library. It
+cannot remove a title, clear progress or history, or read your notes, lists, sync data, co-watch
+sessions or your own TMDB key.
+
+What the assistant does with that data after it receives it depends on the assistant, not on Muviss. An
+assistant may process it on its provider's servers. Whether that happens, and what it keeps, is set by
+the assistant's own privacy policy, which you can read in its app.
+
 ## Data you can delete
 
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the

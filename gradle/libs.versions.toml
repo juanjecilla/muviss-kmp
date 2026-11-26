@@ -63,6 +63,9 @@ licensee = "1.14.1"
 # Coverage report only, no threshold yet (EPIC 38, #71).
 kover = "0.9.11"
 androidxWork = "2.12.0"
+# AppFunctions (EPIC 701): Android-only, consumed by :app:androidApp alone. KSP generates the service.
+appfunctions = "1.0.0"
+ksp = "2.3.14"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -77,6 +80,9 @@ androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", versi
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-work-runtimeKtx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidxWork" }
+# Android-only (EPIC 701): the AppFunctions service and its KSP compiler; never in commonMain.
+androidx-appfunctions = { module = "androidx.appfunctions:appfunctions", version.ref = "appfunctions" }
+androidx-appfunctions-compiler = { module = "androidx.appfunctions:appfunctions-compiler", version.ref = "appfunctions" }
 # Home-screen widgets (EPIC 22). Android-only and Apache-2.0, so it passes
 # :app:androidApp's licensee allow-list; it is added to that module alone and
 # never reaches a KMP source set.
@@ -184,4 +190,5 @@ detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 licensee = { id = "app.cash.licensee", version.ref = "licensee" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentryGradlePlugin" }

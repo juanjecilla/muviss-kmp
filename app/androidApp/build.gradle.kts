@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
     alias(libs.plugins.baselineprofile)
+    alias(libs.plugins.ksp)
     id("muviss.version")
 }
 
@@ -106,6 +107,9 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
+    // AppFunctions (EPIC 701): the assistant-facing surface, Android only.
+    implementation(libs.androidx.appfunctions)
+    ksp(libs.androidx.appfunctions.compiler)
     // Play In-App Review (#410): the store's review sheet, after a user-made Completion. Its
     // licence is the Play Core SDK terms, not an OSS one, which is why licensee below names it.
     implementation(libs.play.review.ktx)

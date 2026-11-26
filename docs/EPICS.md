@@ -679,3 +679,7 @@ Added 2026-10-19 from a grilling session. **ADR 0035**; vocabulary in `CONTEXT.m
 ## EPIC 53 follow-up: specials (#938, ADR 0038)
 
 **Schema claim: `33.sqm` (fixture `34.db`)**, taking a v33 database to v34: `appSettings.countSpecialsTowardProgress`, per device, default off. `30`-`32` have landed on develop (#853, #785, the triage undo), so the chain is whole; `33` was the next free number when #938 merged develop in, and the number should be re-checked before merging. Specials load from TMDB on their own request (`TmdbProvider`) and are counted by choice at read time only (`SpecialsCounting`, ADR 0038). Follow-ups are issues.
+
+## EPIC 701 — Android AppFunctions — issue #701 (ADR 0039)
+
+Let a system agent read and update the library without opening the app (`androidx.appfunctions` 1.0.0, Android 16+). Nine functions, reads and safe silent writes only, no destructive ones. Code lives in `:app:androidApp`; no schema change. ADR **0039** is claimed here (0038 is claimed by draft #953). Follow-ups: #1114 device checks (debug and minified release, `app_metadata.xml`); #1115 the tick can pass the snapshot's aired count (ADR 0037); #1116 move to the current `androidx.appfunctions` release; #1060 landing copy, once the platform leaves private preview.
