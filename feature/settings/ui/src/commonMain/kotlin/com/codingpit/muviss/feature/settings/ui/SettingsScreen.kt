@@ -447,8 +447,8 @@ private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     var blocked by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
-        // Awaited, not the cached blocked(): iOS only answers asynchronously.
-        val check = scope.launch { blocked = system.blockedNow() }
+        // Asked of the OS now: iOS answers only asynchronously and there is no cache to read (#864).
+        val check = scope.launch { blocked = system.statusNow().blocked }
         onPauseOrDispose { check.cancel() }
     }
     if (!enabledInApp || blocked != true) return

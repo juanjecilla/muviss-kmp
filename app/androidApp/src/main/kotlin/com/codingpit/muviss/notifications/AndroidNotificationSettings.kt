@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 
 /** Android's answer to [SystemNotificationSettings] (EPIC 30, #73). */
@@ -16,9 +17,10 @@ class AndroidNotificationSettings(
     private val permissions: AndroidNotificationPermissionRequester,
 ) : SystemNotificationSettings {
 
-    override fun blocked(): Boolean = !NotificationPermission.granted(context)
-
-    override fun canAskAgain(): Boolean = permissions.canAskAgain()
+    override suspend fun statusNow(): NotificationStatus = NotificationStatus(
+        blocked = !NotificationPermission.granted(context),
+        canAskAgain = permissions.canAskAgain(),
+    )
 
     override fun open() {
         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
