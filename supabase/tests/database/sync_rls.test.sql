@@ -162,7 +162,7 @@ select is(
 -- ------------------------------------------------------------ anonymous ---
 
 -- The anon key with no session. Since the entitlement migration anon holds no
--- table privilege at all (20261022000100), so a read is refused outright with
+-- table privilege at all (20261126000100), so a read is refused outright with
 -- 42501 rather than answered with an empty set; RLS would have matched nothing
 -- either way, now it is never reached.
 select set_config('request.jwt.claim.sub', '', true);
