@@ -82,6 +82,10 @@ _Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
 A tick that finishes a season (a later one has aired) or leaves nothing aired unseen for the show (it is caught up). Derived from the tick and WatchNext, never stored. The only ticks that get more than the row's own feedback.
 _Avoid_: achievement, streak (that is a count of days, a different thing).
 
+**Special**:
+A show's season 0: the extras TMDB lists apart from the numbered seasons. Shown under its own header and tickable. Counted in a title's progress only if the person turns that on for their device (ADR 0038); never in the Snapshot, never "next".
+_Avoid_: extra, bonus, episode 0 (a special is not a numbered episode).
+
 **Favorite**:
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 

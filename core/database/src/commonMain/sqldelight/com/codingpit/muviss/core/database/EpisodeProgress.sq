@@ -33,10 +33,12 @@ selectAll:
 SELECT *
 FROM episodeProgress;
 
+-- Regular seasons only, the same predicate as the snapshot floors (ADR 0037, #938): this count feeds
+-- WatchStatusCalculator against the snapshot's regular aired count, so a special tick must not add to it.
 countSeenForMedia:
 SELECT COUNT(*)
 FROM episodeProgress
-WHERE mediaId = :mediaId AND seen = 1;
+WHERE mediaId = :mediaId AND seen = 1 AND (seasonNumber <> 0 OR episodeNumber = 0);
 
 -- Every currently-seen row's tick timestamp, across all media — the raw
 -- material for the profile feature's watch-streak calculation (see

@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.progress.ui
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
@@ -86,7 +87,7 @@ class UpcomingViewModelTest {
         catalogSource: EpisodeCatalogSource,
     ) = UpcomingViewModel(
         collectionApi,
-        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore()),
+        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore(), DataEraseFence()),
         FakeClock(today),
     )
 
@@ -169,7 +170,7 @@ class UpcomingViewModelTest {
         val updatedSource = FakeUpcomingCatalogSource(mapOf(tvShow to listOf(Season(1, "Season 1", listOf(episode(1, 1, airDay = 100))))))
         val vmWithUpdatedSource = UpcomingViewModel(
             FakeUpcomingCollectionApi(listOf(summary(tvShow))),
-            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource), InMemoryEpisodeCatalogStore()),
+            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource), InMemoryEpisodeCatalogStore(), DataEraseFence()),
             FakeClock(today),
         )
         vmWithUpdatedSource.refresh()
