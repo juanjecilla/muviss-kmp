@@ -256,6 +256,31 @@ the ceiling of 14.01:1. All twelve tie, so they are listed in full.
 
 </details>
 
+#### Sampling rule check (#627)
+
+The photograph rule (bucket shift 3, 2% share) was chosen by argument. `RatingBadgeSamplingRuleTest`
+(`jvmTest`) measures it on a synthetic band: a gradient from 40 to 120 levels, grain of 0, 4 or 8 levels,
+anti-aliased glyph pixels over 15% of the band, and a light patch of 0 to 5% of the band at tone 200. The
+truth is the lightest tone that covers 2% of the band. The full grid is in the test's standard output.
+
+| At the shipped rule (shift 3, 2%) | Result |
+|-----------------------------------|--------|
+| No patch, read against the truth  | up to **11 levels under** (grain 4); 7 flat, 6 at grain 8 |
+| 5% patch                          | found at every grain (198 to 205 against 200) |
+| 3% patch                          | missed at grain 4 and 8 |
+| 1% to 2% patch                    | missed |
+
+The under-read comes from a bucket being represented by its median pixel, not its brightest. The misses come
+from glyph pixels inside a patch and from 8-level bucket edges splitting it below the 2% share. Anti-aliasing
+did not make the rule read too light: no glyph edge was counted as backdrop in the grid.
+
+Decision: **kept**. Exact tones (shift 0) find no tone at all at grain 4, and read 55 at grain 8; shift 2 misses the
+same patches as shift 3. None of these readings can fail the AA claim. The scrim caps every backdrop: behind 70% black no
+artwork composites lighter than #4C4C4C, which is 5.6:1 against the ink. So the true lightest ratio is never
+below 5.6:1, and a sampling error can only make a poster's reported figure more optimistic, within that cap.
+A sliding window in place of the fixed buckets would remove the misses, and is tracked as a follow-up for
+anyone who needs a tighter per-poster figure.
+
 #### How to run it
 
 Fetch the fixtures into a folder **outside the repo**. `/poster-fixtures/` is
