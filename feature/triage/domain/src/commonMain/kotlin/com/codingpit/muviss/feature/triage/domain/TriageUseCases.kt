@@ -164,7 +164,9 @@ class RecordDecisionUseCase(
 
             TriageVerdict.CAUGHT_UP -> when (details.type) {
                 MediaType.MOVIE -> listOf(EpisodeId.forMovie(details.id))
-                MediaType.TV -> EpisodeOrdering.airedBy(details.seasons, today)
+
+                // Regular seasons only, so a caught-up verdict never ticks a special (ADR 0038). #948 owns whether it should.
+                MediaType.TV -> EpisodeOrdering.airedBy(details.regularSeasons(), today)
             }
         }
         return candidates.filterNot { it in seenBefore }

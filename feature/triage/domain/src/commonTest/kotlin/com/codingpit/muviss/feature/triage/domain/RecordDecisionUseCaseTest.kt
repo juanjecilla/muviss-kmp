@@ -172,6 +172,34 @@ class RecordDecisionUseCaseTest {
         assertEquals(WatchStatus.WATCHED, deriveFor(movieDetails(film), seen = 1))
     }
 
+    @Test
+    fun caught_up_never_ticks_an_aired_special_and_records_no_play_for_one() = runTest {
+        // ADR 0038: triage ticks regular seasons only, so a special stays unseen and its viewing is never recorded.
+        val withSpecial = show("1401", "Doctor Who")
+        val details = tvDetails(
+            summary = withSpecial,
+            seasons = listOf(
+                0 to listOf(TODAY_EPOCH_DAY - 40),
+                1 to listOf(TODAY_EPOCH_DAY - 30, TODAY_EPOCH_DAY - 23, TODAY_EPOCH_DAY + 4),
+            ),
+        )
+        val h = Harness(details = FakeTriageDetailsSource(byId = mapOf(withSpecial.id to details)))
+
+        h.useCase(withSpecial, TriageVerdict.CAUGHT_UP).getOrThrow()
+
+        assertEquals(
+            setOf(EpisodeId(withSpecial.id, 1, 1), EpisodeId(withSpecial.id, 1, 2)),
+            h.progress.seen.value,
+        )
+        assertEquals(
+            listOf(
+                com.codingpit.muviss.feature.progress.api.EpisodePlay.idOf(EpisodeId(withSpecial.id, 1, 1), NOW_EPOCH_MS),
+                com.codingpit.muviss.feature.progress.api.EpisodePlay.idOf(EpisodeId(withSpecial.id, 1, 2), NOW_EPOCH_MS),
+            ),
+            h.repository.decisions.value.getValue(withSpecial.id).tickedPlayIds,
+        )
+    }
+
     // --- failure handling ---
 
     @Test
