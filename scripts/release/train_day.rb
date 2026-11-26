@@ -4,7 +4,9 @@
 # the time it started: the nightly cron is 23:00 UTC and GitHub can start it
 # hours late, past midnight. Judging the run's own clock put a Monday 23:00 run
 # that started at 02:24 on Tuesday on the wrong day. The schedule's time is the
-# run's time less SCHEDULE_LAG, the most a late start has been seen to cost.
+# run's time less SLOT_HOUR hours: the cron fires at SLOT_HOUR:00 UTC, so any
+# start from the slot up to 24h later lands on the slot's own UTC day. A fixed
+# lag bound (6h, #714) failed on a 7h47m late start (#1050).
 # A dispatch always runs.
 #
 #   ruby scripts/release/train_day.rb EVENT TRAIN_DAY   prints true or false
@@ -13,7 +15,8 @@
 require "time"
 
 module TrainDay
-  SCHEDULE_LAG = 6 * 3600
+  # The hour of release-train.yml's cron ('0 23 * * *'); keep them equal.
+  SLOT_HOUR = 23
 
   module_function
 
@@ -23,7 +26,7 @@ module TrainDay
     day = Integer(train_day, exception: false)
     raise ArgumentError, "the train day must be 1 to 7, got #{train_day.inspect}" unless day&.between?(1, 7)
 
-    scheduled = (now - SCHEDULE_LAG).utc
+    scheduled = (now - (SLOT_HOUR * 3600)).utc
     iso_weekday(scheduled) == day
   end
 

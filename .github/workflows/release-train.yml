@@ -25,7 +25,8 @@ name: Release train
 # without editing this file. The day is the cron's scheduled time, 23:00 UTC,
 # not the time the run started: GitHub can start it past midnight, and that run
 # still counts as the day it was scheduled for (scripts/release/train_day.rb,
-# #714). Dispatch runs regardless of the day.
+# #714), however late it starts, up to a day (#1050). Dispatch runs regardless
+# of the day.
 #
 # The mergeability job runs every night, not only on the train day (#713): each
 # live release branch is merged onto main in memory, and a conflict that
@@ -86,6 +87,35 @@ jobs:
           set -euo pipefail
           scripts/release/release-issue.sh labels
           ruby fastlane/release_mergeability.rb
+
+      # A cut that should have happened and did not (#1050): the day after the
+      # train day, develop at the slot (23:00 UTC on the train day) had commits
+      # newer than the newest release, yet no train blocked or cut. A skip is
+      # otherwise a green run that says nothing. The slot-time ref keeps commits
+      # merged after the cut from raising it.
+      - name: A train day that cut nothing is raised
+        if: always() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TRAIN_DAY: ${{ vars.RELEASE_TRAIN_DAY || '1' }}
+        run: |
+          set -euo pipefail
+          SCHED="$(date -u -d '23 hours ago' +%F)"
+          [ "$(date -u -d "$SCHED" +%u)" = "$(( TRAIN_DAY % 7 + 1 ))" ] || exit 0
+          TRAIN_DATE="$(date -u -d "$SCHED - 1 day" +%F)"
+          REF="$(git rev-list -1 --before="${TRAIN_DATE}T23:00:00Z" origin/develop)"
+          set +e
+          VERSION="$(scripts/release/next-version.sh "$REF")"
+          CODE=$?
+          set -e
+          [ "$CODE" -eq 0 ] || exit 0
+          ISSUE="$(gh issue list --state open --search 'in:title "Release train blocked"' --json number --jq '.[0].number')"
+          [ -z "$ISSUE" ] || exit 0
+          MSG="Release train $(date -u +%F): the ${TRAIN_DATE} train day cut nothing, though develop had changes for ${VERSION} at its slot. Dispatch release-train.yml to cut it, then find why the run skipped."
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+          gh issue create --title "Release train blocked" --body "$MSG"
+          exit 1
 
       # A back-merge that did not merge by itself (a conflict, a hand
       # resolution) is said once on its release issue (#890).
