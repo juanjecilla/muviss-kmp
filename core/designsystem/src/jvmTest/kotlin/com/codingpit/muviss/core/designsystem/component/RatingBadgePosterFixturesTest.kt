@@ -148,6 +148,11 @@ class RatingBadgePosterFixturesTest {
          * Photographs do not repeat exact colours, so each channel is quantised to
          * 32 levels and a tone must cover 2% of the band. Anti-aliasing spreads
          * over many buckets and rarely clears that bar; see [sampleBadgeBand].
+         *
+         * Kept, not changed, after the synthetic grid in `RatingBadgeSamplingRuleTest` (#627). That grid
+         * shows the reading is at most 11 levels under the true lightest tone, and that a patch of 1-3% of
+         * the band can go uncounted. Neither can fail the AA claim: behind the 70% scrim no backdrop is lighter
+         * than #4C4C4C (5.6:1), so these figures can only be optimistic within that cap.
          */
         const val PHOTO_BUCKET_SHIFT = 3
         const val PHOTO_DOMINANT_SHARE = 0.02
