@@ -154,6 +154,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# A run killed by SIGKILL skips the trap and leaves its temp file behind (#1021).
+# mktemp names are six characters; only those are removed, and only regular files.
+find "$here" -maxdepth 1 -name '.local.properties.??????' -type f -exec rm -f {} +
+
 # mktemp creates the file 0600 whatever the umask.
 tmp="$(mktemp "$here/.local.properties.XXXXXX")"
 cp "$source" "$tmp"
