@@ -18,6 +18,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -102,7 +103,7 @@ class RecordDecisionUseCase(
      */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision.mediaId)
 
-    private suspend fun apply(mediaId: MediaId): Result<Unit> = runCatching {
+    private suspend fun apply(mediaId: MediaId): Result<Unit> = runSuspendCatchingUnlessCancelled {
         // The fetch runs outside the lock, so an Undo that arrives while it is pending is not held up by it. That Undo
         // restores the decision at once, and the critical section below sees the decision gone and writes nothing (#792).
         val details = detailsSource.fetch(mediaId).getOrThrow()
@@ -135,6 +136,13 @@ class RecordDecisionUseCase(
         if (planned.isNotEmpty()) progressApi.recordFirstPlays(planned, watchedAtEpochMs = now)
         repository.markResolved(mediaId, resolved = true)
     }
+
+    /**
+     * [runCatching] for suspending work that must not swallow cancellation (#1079). A cancelled verdict (the person left
+     * the screen) rethrows the [CancellationException] instead of returning it as a failure, so the caller's coroutine
+     * ends cancelled rather than running follow-up work on a dead scope.
+     */
+    private inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure { if (it is CancellationException) throw it }
 
     /**
      * The add and the claim write, as one unit (#1071). The claim is recorded once the add has landed and before the

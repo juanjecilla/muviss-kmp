@@ -42,9 +42,13 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     var failUnclaimedClaimWrite: Throwable? = null
     private var writes = 0
 
+    /** Runs before a claim write, so a test can suspend the write and cancel the verdict while it is in flight (#1079). */
+    var beforeClaimWrite: (suspend () -> Unit)? = null
+
     override suspend fun record(decision: TriageDecision) {
         writes++
         if (decision.createdEntry) {
+            beforeClaimWrite?.invoke()
             failClaimWrite?.let {
                 failClaimWrite = null
                 throw it
