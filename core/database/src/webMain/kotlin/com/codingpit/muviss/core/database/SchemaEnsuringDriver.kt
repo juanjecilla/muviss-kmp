@@ -70,12 +70,17 @@ internal class SchemaEnsuringDriver(private val delegate: SqlDriver) : SqlDriver
         mutex.withLock {
             if (schemaReady) return
             when (val step = schemaStepFor(readUserVersion(), MuvissDatabase.Schema.version)) {
-                SchemaStep.Create -> {
+                // One transaction, as on Android (the framework's SQLiteOpenHelper) and iOS (SQLiter's
+                // migrateIfNeeded): the schema change and its user_version stamp commit together or not at
+                // all (#1027). Without it each statement autocommits, and the worker's debounced snapshot or
+                // the pagehide flush can store a half-applied migration under the old version, so the next
+                // launch re-runs it over its own partial output (30.sqm's rebuild fails on the table it left).
+                SchemaStep.Create -> MuvissDatabase(delegate).transaction {
                     MuvissDatabase.Schema.awaitCreate(delegate)
                     writeUserVersion(MuvissDatabase.Schema.version)
                 }
 
-                is SchemaStep.Migrate -> {
+                is SchemaStep.Migrate -> MuvissDatabase(delegate).transaction {
                     MuvissDatabase.Schema.awaitMigrate(delegate, step.from, step.to)
                     writeUserVersion(step.to)
                 }
