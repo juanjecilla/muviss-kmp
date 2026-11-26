@@ -196,7 +196,19 @@ SET title = :title,
     airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
     genres = :genres,
     runtimeMinutes = :runtimeMinutes
-WHERE mediaId = :mediaId AND deleted = 0;
+-- Only a row whose provider values actually change is matched. SQLite counts a
+-- matched row as changed even when every value is the same, and the web worker
+-- reads that count as this tab's own write (#841): a Library visit that changes
+-- nothing must not make an out-of-date tab look like it has changes to keep.
+WHERE mediaId = :mediaId AND deleted = 0
+  AND (title IS NOT :title
+    OR posterUrl IS NOT :posterUrl
+    OR releaseYear IS NOT :releaseYear
+    OR productionStatus IS NOT :productionStatus
+    OR totalEpisodes IS NOT MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
+    OR airedEpisodes IS NOT MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
+    OR genres IS NOT :genres
+    OR runtimeMinutes IS NOT :runtimeMinutes);
 
 -- A pulled row that wins last-write-wins against an existing local one takes
 -- the *user* fields only (EPIC 39, ADR 0020): favorite, rating, note, the

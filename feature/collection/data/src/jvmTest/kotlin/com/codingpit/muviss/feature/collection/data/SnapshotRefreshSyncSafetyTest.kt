@@ -2,10 +2,13 @@
 
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import com.codingpit.muviss.core.database.CollectionEntry
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
-import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -33,13 +36,15 @@ import kotlin.test.assertTrue
  */
 class SnapshotRefreshSyncSafetyTest {
 
+    private lateinit var driver: SqlDriver
     private lateinit var queries: CollectionEntryQueries
     private lateinit var clock: FakeClock
     private lateinit var repository: SqlDelightCollectionRepository
 
     @BeforeTest
     fun setUp() {
-        val database = inMemoryDatabase()
+        driver = inMemoryDriver()
+        val database = MuvissDatabase(driver)
         queries = database.collectionEntryQueries
         clock = FakeClock(10_000L)
         repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
@@ -103,6 +108,28 @@ class SnapshotRefreshSyncSafetyTest {
         assertEquals("keep", after.note)
         assertTrue(after.favorite)
         assertEquals(500L, after.addedAtEpochMs)
+    }
+
+    /** Rows changed by this connection so far. SQLite counts a row an UPDATE matched even when its values are unchanged. */
+    private fun totalChanges(): Long = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT total_changes()",
+        mapper = { cursor ->
+            cursor.next()
+            QueryResult.Value(cursor.getLong(0) ?: 0L)
+        },
+        parameters = 0,
+    ).value
+
+    @Test
+    fun a_refresh_that_changes_no_provider_value_writes_no_row() = runTest {
+        seedSyncedRow()
+        repository.refreshSnapshot(details())
+
+        val before = totalChanges()
+        repository.refreshSnapshot(details())
+
+        assertEquals(before, totalChanges(), "a refresh with the same provider data changes no row, so a tab that only visits the Library is not seen to have written")
     }
 
     @Test
