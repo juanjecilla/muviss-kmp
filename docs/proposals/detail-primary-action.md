@@ -1,5 +1,7 @@
 # Detail: the primary action follows the library state
 
+> **Amendment (#938, ADR 0038).** Two corner cases below are superseded. *Loading specials reconciles the Snapshot* and *Existing specials must not alert* no longer apply: specials are never written into the Snapshot's aired count, so loading them changes no count and raises no alert. Whether a special counts toward progress is a per-device setting, read at read time. *Only an unseen special remains* holds only with that setting on; with it off the primary action reads "Caught up" and the Specials header shows the unseen count.
+
 Issue #721. Decision record: ADR 0037.
 
 ## Problem
