@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.remoteconfig
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
@@ -16,12 +17,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 
 /**
  * [RemoteConfig] served by ConfigCat (ADR 0026).
  *
  * **Manual poll.** The SDK never fetches on its own: [refreshIfStale] does, at
- * startup and on foreground, at most once per [staleAfterMs]. That keeps a
+ * startup and on foreground, at most once per [STALE_AFTER_MS]. That keeps a
  * fetch off every screen and makes a background process (a WorkManager job, an
  * iOS BGTask) fetch nothing — those read whatever was stored at the last
  * foreground.
@@ -39,12 +41,15 @@ internal class ConfigCatRemoteConfig(
     cache: ConfigCache,
     private val defaults: RemoteValues,
     private val clock: AppClock,
-    private val staleAfterMs: Long = STALE_AFTER_MS,
+    private val erasures: DataEraseFence,
 ) : RemoteConfig {
+
+    // Declared before the client: the SDK is handed this wrapper, not `cache`, so its write is fenced (#1061).
+    private val fencedCache = FencedConfigCache(cache, erasures)
 
     private val client: ConfigCatClient = ConfigCatClient(sdkKey) {
         pollingMode = manualPoll()
-        configCache = cache
+        configCache = fencedCache
         httpEngine = engine
         dataGovernance = DataGovernance.EU_ONLY
         // The SDK logs the evaluated value at INFO; a served credential must not reach a log.
@@ -67,7 +72,9 @@ internal class ConfigCatRemoteConfig(
         refreshing.withLock {
             val last = lastFetchEpochMs
             val now = clock.nowEpochMs()
-            if (last != null && now - last in 0 until staleAfterMs) return
+            if (last != null && now - last in 0 until STALE_AFTER_MS) return
+            // Taken before the SDK asks TMDB's CDN, and it is what the SDK's write below is checked against.
+            fencedCache.requestedAt = erasures.request()
             runCatchingNonCancellation { client.forceRefresh() }
             // A failed fetch still counts: retrying on every foreground would hammer the CDN offline.
             lastFetchEpochMs = now
@@ -104,6 +111,29 @@ internal class ConfigCatRemoteConfig(
         throw e
     } catch (_: Exception) {
         null
+    }
+
+    /**
+     * The cache the SDK writes its fetched config through. The SDK does that write itself, inside the awaited
+     * `forceRefresh` (its `fetchConfig` calls `writeCache` before the answer is returned), so nothing on our side
+     * is around it to take the fence: this wrapper does. [requestedAt] is set by [refreshIfStale] under its lock,
+     * before `forceRefresh`, and starts at the count at construction, so a write can never be unfenced.
+     *
+     * Known gap, not closed here: the SDK runs each fetch in its own coroutine. If [refreshIfStale] is cancelled
+     * mid-fetch, that write still lands later, checked against whatever count is armed then.
+     */
+    private class FencedConfigCache(
+        private val delegate: ConfigCache,
+        private val erasures: DataEraseFence,
+    ) : ConfigCache {
+        @Volatile
+        var requestedAt: Long = erasures.request()
+
+        override suspend fun read(key: String): String? = delegate.read(key)
+
+        override suspend fun write(key: String, value: String) {
+            erasures.write(requestedAt) { delegate.write(key, value) }
+        }
     }
 
     companion object {

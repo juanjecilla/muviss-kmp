@@ -34,12 +34,14 @@ sealed interface SaveOwnKeyResult {
     /** TMDB answered 401: the key is wrong or revoked. Not saved. */
     data object Rejected : SaveOwnKeyResult
 
-    /**
-     * Offline, throttled or TMDB failing: the key could not be checked, so it was not saved. Also what a
-     * check that TMDB accepted reports when Delete all data ran while it was in flight (#1056): the key is
-     * not kept, and the screen that asked is being cleared by that erase anyway.
-     */
+    /** Offline, throttled or TMDB failing: the key could not be checked, so it was not saved. */
     data object CouldNotCheck : SaveOwnKeyResult
+
+    /**
+     * TMDB accepted the key, but Delete all data ran while it was being checked (#1056), so it was not kept. Not a
+     * failed check: the screen that asked is being cleared by that erase, and it must not say the key was saved.
+     */
+    data object Erased : SaveOwnKeyResult
 }
 
 /**
@@ -100,17 +102,17 @@ class OwnTmdbKey internal constructor(
      */
     suspend fun save(raw: String): SaveOwnKeyResult {
         val candidate = TmdbKeyShape.detect(raw) ?: return SaveOwnKeyResult.Malformed
-        // Taken before TMDB is asked: a key TMDB accepted, but checked before Delete all data, is not kept (#1056).
-        val requestedAt = erasures.request()
-        return when (validator.validate(candidate)) {
+        // A key TMDB accepted, but checked before Delete all data, is not kept (#1056): the fence's count is taken before TMDB is asked.
+        val checked = erasures.guardedFetch { validator.validate(candidate) }
+        return when (checked.value) {
             KeyCheck.Accepted -> {
-                val kept = erasures.write(requestedAt) {
+                val kept = checked.write {
                     lock.withLock {
                         store.put(STORE_NAME, raw.trim())
                         current.value = Loaded(candidate)
                     }
                 }
-                if (kept) SaveOwnKeyResult.Saved else SaveOwnKeyResult.CouldNotCheck
+                if (kept) SaveOwnKeyResult.Saved else SaveOwnKeyResult.Erased
             }
 
             KeyCheck.Rejected -> SaveOwnKeyResult.Rejected

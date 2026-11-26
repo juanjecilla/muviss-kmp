@@ -75,9 +75,9 @@ class EpisodeCatalogCache(
      */
     private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> = mediaIds.mapBounded { id ->
         // Taken before TMDB is asked: an answer requested before Delete all data stores nothing after it (#1056).
-        val requestedAt = erasures.request()
-        fetchEpisodeCatalog(id).onSuccess { seasons ->
-            erasures.write(requestedAt) {
+        val fetched = erasures.guardedFetch { fetchEpisodeCatalog(id) }
+        fetched.value.onSuccess { seasons ->
+            fetched.write {
                 store.save(id, seasons)
                 _catalogs.update { it + (id to seasons) }
             }
