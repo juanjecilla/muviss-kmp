@@ -18,7 +18,12 @@ class PendingChangeCountTest {
             .substringAfter("countDirtyRows:")
             .substringBefore(";")
         SyncTable.entries.forEach { table ->
-            assertTrue("FROM ${table.cursorKey} WHERE isDirty = 1" in query, "countDirtyRows leaves out ${table.cursorKey}")
+            // The Display Preferences group is one row of `appSettings`, dirty by its own flag (ADR 0036).
+            val clause = when (table) {
+                SyncTable.DISPLAY_PREFERENCES -> "FROM appSettings WHERE id = 0 AND displayPreferencesDirty = 1"
+                else -> "FROM ${table.cursorKey} WHERE isDirty = 1"
+            }
+            assertTrue(clause in query, "countDirtyRows leaves out ${table.cursorKey}")
         }
     }
 }
