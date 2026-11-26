@@ -279,7 +279,7 @@ class FakeSupabaseServerTest {
         val first = redeem()
         assertEquals(HttpStatusCode.OK, first.status)
         val rotated = Json.parseToJsonElement(first.bodyAsText()) as JsonObject
-        assertNotEquals("access-alice", rotated.getValue("access_token").jsonPrimitive.contentOrNull)
+        assertNotEquals(token, rotated.getValue("access_token").jsonPrimitive.contentOrNull)
 
         assertEquals(HttpStatusCode.BadRequest, redeem().status)
     }
@@ -293,5 +293,117 @@ class FakeSupabaseServerTest {
 
         assertEquals(0, seenBefore)
         assertEquals(1, server.rows("collection_entry", "alice").size)
+    }
+
+    // --- The paid gate (ADR 0019; observed responses in #283) ----------------
+
+    private suspend fun refresh(refreshToken: String): String {
+        val response = client.post("http://fake/auth/v1/token?grant_type=refresh_token") {
+            header("apikey", "anon")
+            setBody(io.ktor.http.content.TextContent("""{"refresh_token":"$refreshToken"}""", io.ktor.http.ContentType.Application.Json))
+        }
+        assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+        return (Json.parseToJsonElement(response.bodyAsText()) as JsonObject).getValue("access_token").jsonPrimitive.content
+    }
+
+    private suspend fun selectStatus(table: String, bearer: String): Pair<HttpStatusCode, String> {
+        val response = client.get("http://fake/rest/v1/$table?select=*") {
+            header("apikey", "anon")
+            header("Authorization", "Bearer $bearer")
+        }
+        return response.status to response.bodyAsText()
+    }
+
+    @Test
+    fun a_push_without_a_sync_until_claim_is_an_rls_refusal() = runTest {
+        val unpaid = server.signUp("bob", entitled = false)
+
+        val response = upsert("collection_entry", listOf(entry("m1", 10)), bearer = unpaid)
+
+        assertEquals(HttpStatusCode.Forbidden, response.status)
+        assertTrue(response.bodyAsText().contains("\"code\":\"42501\""), response.bodyAsText())
+        assertTrue(server.rows("collection_entry", "bob").isEmpty())
+    }
+
+    @Test
+    fun a_pull_without_a_sync_until_claim_is_a_silent_empty_200() = runTest {
+        server.seed("collection_entry", "bob", entry("m1", 10))
+        val unpaid = server.signUp("bob", entitled = false)
+
+        assertEquals(HttpStatusCode.OK to "[]", selectStatus("collection_entry", unpaid))
+    }
+
+    @Test
+    fun a_claim_in_the_past_counts_as_no_claim() = runTest {
+        val lapsed = FakeSupabaseServer.accessToken("carol", syncUntil = "1970-01-01T00:00:01Z")
+        server.signUp("carol", accessToken = lapsed)
+
+        assertEquals(HttpStatusCode.Forbidden, upsert("collection_entry", listOf(entry("m1", 10)), bearer = lapsed).status)
+    }
+
+    @Test
+    fun a_grant_reaches_only_tokens_minted_after_it() = runTest {
+        val before = server.signUp("bob", entitled = false)
+        server.grantEntitlement("bob")
+
+        assertEquals(HttpStatusCode.Forbidden, upsert("collection_entry", listOf(entry("m1", 10)), bearer = before).status, "a token keeps the claim it was minted with")
+        val after = refresh("refresh-bob")
+        assertEquals(HttpStatusCode.NoContent, upsert("collection_entry", listOf(entry("m1", 10)), bearer = after).status)
+    }
+
+    @Test
+    fun a_grant_with_an_end_mints_that_instant_and_an_ended_one_mints_none() = runTest {
+        server.signUp("bob", entitled = false)
+        server.grantEntitlement("bob", expiresAtEpochMs = serverNow + 60_000L)
+        val live = refresh("refresh-bob")
+        assertEquals(HttpStatusCode.NoContent, upsert("collection_entry", listOf(entry("m1", 10)), bearer = live).status)
+
+        serverNow += 120_000L
+        assertEquals(HttpStatusCode.Forbidden, upsert("collection_entry", listOf(entry("m2", 10)), bearer = live).status, "the claim itself has passed")
+    }
+
+    @Test
+    fun the_entitlement_row_is_readable_by_its_owner_and_never_writable() = runTest {
+        val unpaid = server.signUp("bob", entitled = false)
+        assertEquals(HttpStatusCode.OK to "[]", selectStatus("entitlement", unpaid), "never paid: no row, and readable without a claim")
+
+        server.grantEntitlement("bob", expiresAtEpochMs = 1_762_647_375_289L)
+        val (status, body) = selectStatus("entitlement", unpaid)
+        assertEquals(HttpStatusCode.OK, status)
+        assertEquals("""[{"active":true,"expires_at":"2025-11-09T00:16:15.289+00:00"}]""", body)
+
+        val write = client.post("http://fake/rest/v1/entitlement") {
+            header("apikey", "anon")
+            header("Authorization", "Bearer $unpaid")
+            setBody(io.ktor.http.content.TextContent("""[{"active":true}]""", io.ktor.http.ContentType.Application.Json))
+        }
+        assertEquals(HttpStatusCode.Forbidden, write.status)
+        assertTrue(write.bodyAsText().contains("42501"))
+    }
+
+    @Test
+    fun delete_account_removes_the_user_and_its_rows_and_a_later_push_is_a_409() = runTest {
+        upsert("collection_entry", listOf(entry("m1", 10)))
+
+        val response = client.post("http://fake/functions/v1/delete-account") {
+            header("apikey", "anon")
+            header("Authorization", "Bearer $token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals("""{"deleted":"alice"}""", response.bodyAsText())
+        assertTrue(server.isDeleted("alice"))
+        assertTrue(server.rows("collection_entry", "alice").isEmpty())
+        val push = upsert("collection_entry", listOf(entry("m2", 10)))
+        assertEquals(HttpStatusCode.Conflict, push.status)
+        assertTrue(push.bodyAsText().contains("23503"))
+    }
+
+    @Test
+    fun delete_account_without_a_user_token_is_a_401() = runTest {
+        val response = client.post("http://fake/functions/v1/delete-account") { header("apikey", "anon") }
+
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+        assertTrue(!server.isDeleted("alice"))
     }
 }

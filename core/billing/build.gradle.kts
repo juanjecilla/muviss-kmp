@@ -48,6 +48,9 @@ kotlin {
         commonMain {
             kotlin.srcDir(generateBuildConfig)
             dependencies {
+                // AppClock only. `:core:sync` stays out (ADR 0018): the server's
+                // record is reached through EntitlementSource, which the app shell binds.
+                implementation(projects.core.common)
                 implementation(libs.kotlinx.coroutinesCore)
                 implementation(libs.koin.core)
             }

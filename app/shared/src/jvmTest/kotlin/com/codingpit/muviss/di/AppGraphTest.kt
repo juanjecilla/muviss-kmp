@@ -11,6 +11,7 @@ import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.network.MetadataProvider
+import com.codingpit.muviss.core.sync.AccountLocalDataEraser
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
@@ -113,6 +114,9 @@ class AppGraphTest {
         assertNotNull(koin.get<ListsApi>())
         assertNotNull(koin.get<CoWatchApi>())
         assertNotNull(koin.get<SyncEngine>())
+        // ADR 0019: the seam that deleting the account erases through. If the bridge
+        // did not bind it, the deletion would silently keep the library.
+        assertNotNull(koin.get<AccountLocalDataEraser>())
         // Bound by `databaseModule` rather than by `MuvissApp`'s own module, so
         // that it exists on the platforms that start Koin before Compose — this
         // test's `startGraph` is the shape of those entry points, and it is the

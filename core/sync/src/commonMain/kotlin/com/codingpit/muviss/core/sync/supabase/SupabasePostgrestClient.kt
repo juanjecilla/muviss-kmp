@@ -12,6 +12,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -19,6 +21,13 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+
+/** A `public.entitlement` row as its owner may read it. `expires_at` is a `timestamptz`, which PostgREST renders as ISO-8601 with an offset. */
+@Serializable
+internal data class EntitlementRowDto(
+    val active: Boolean,
+    @SerialName("expires_at") val expiresAt: String? = null,
+)
 
 /** One pulled row and the `server_seq` PostgREST stamped it with — kept beside the row, not in it, so the change types and the wire format gain no field. */
 internal class PulledRow<T>(val serverSeq: Long, val value: T)
@@ -91,6 +100,22 @@ internal class SupabasePostgrestClient(
         return array.map { element -> pulledRow(table, element, serializer) }
     }
 
+    /**
+     * The caller's own `public.entitlement` row (ADR 0019), or null when there
+     * is none. No filter is sent: the table's only policy lets a user read
+     * their own row, so RLS is the filter, exactly as it is for the synced
+     * tables. Unlike those, this read is **not** gated on the `sync_until`
+     * claim — it is how a client without one learns that it has paid.
+     */
+    suspend fun selectEntitlement(accessToken: String): EntitlementRowDto? {
+        val response = client.get("$baseUrl/rest/v1/$TABLE_ENTITLEMENT") {
+            applyHeaders(accessToken)
+            parameter("select", "active,expires_at")
+        }
+        response.ensureSuccess("select from $TABLE_ENTITLEMENT")
+        return pullJson.decodeFromString(ListSerializer(EntitlementRowDto.serializer()), response.bodyAsText()).firstOrNull()
+    }
+
     private fun <T> pulledRow(table: String, element: JsonElement, serializer: KSerializer<T>): PulledRow<T> {
         val row = element as? JsonObject ?: error("select from $table returned a non-object row")
         val seq = row["server_seq"]?.jsonPrimitive?.longOrNull
@@ -104,6 +129,8 @@ internal class SupabasePostgrestClient(
     }
 
     private companion object {
+        const val TABLE_ENTITLEMENT = "entitlement"
+
         /** `explicitNulls` is the point: see the class KDoc. */
         val pushJson = Json {
             explicitNulls = true

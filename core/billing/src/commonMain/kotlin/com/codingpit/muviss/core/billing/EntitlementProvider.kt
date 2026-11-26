@@ -3,6 +3,7 @@ package com.codingpit.muviss.core.billing
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 
 /**
  * The source of truth for whether the user has paid, and the only thing the
@@ -26,6 +27,22 @@ interface EntitlementProvider {
 
     /** Re-checks with the store. Called when the user opens the paywall or returns from a purchase; a no-op for implementations with nothing to ask. */
     suspend fun refresh()
+
+    /**
+     * Called once a store reports a completed purchase: waits — bounded — until
+     * the purchase has reached everything the entitlement depends on, and
+     * returns what [entitlement] reads afterwards. [Entitlement.Unknown] means
+     * it has not arrived yet, which a paywall shows as "processing" rather than
+     * as a failure.
+     *
+     * The default suits an implementation whose only source is the store
+     * itself. [SupabaseEntitlementProvider] overrides it, because there a
+     * purchase lands on the server *after* the store says it is done (ADR 0019).
+     */
+    suspend fun refreshAfterPurchase(): Entitlement {
+        refresh()
+        return entitlement.first()
+    }
 }
 
 /**
