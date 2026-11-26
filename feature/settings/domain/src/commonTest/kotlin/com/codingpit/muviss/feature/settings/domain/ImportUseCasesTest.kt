@@ -242,6 +242,25 @@ class ApplyImportUseCaseTest {
         assertEquals(setOf(EpisodeId(showId, 1, 1), EpisodeId(showId, 1, 2)), progressApi.seenEpisodes)
     }
 
+    // #949: an import writes season-0 ticks like any others. ADR 0038 keeps them stored but not counted until the
+    // person turns "Count specials toward progress" on; this use case has no setting to write, so it cannot turn it on.
+    @Test
+    fun a_season_zero_episode_is_stored_as_a_seen_special() = runTest {
+        val progressApi = FakeProgressApi()
+        val useCase = ApplyImportUseCase(FakeDetailsSource(mapOf(showId to showDetails)), FakeCollectionApi(), progressApi)
+        val title = ImportedTitle(
+            ExternalTitleRef(tmdbId = "1399"),
+            MediaType.TV,
+            "Show",
+            episodes = listOf(ImportedEpisode(0, 1)),
+        )
+
+        val result = useCase(preview(ResolvedImportTitle(title, showId)))
+
+        assertEquals(1, result.episodeTickCount)
+        assertEquals(setOf(EpisodeId(showId, 0, 1)), progressApi.seenEpisodes)
+    }
+
     @Test
     fun sets_rating_only_when_none_exists_yet() = runTest {
         val collectionApi = FakeCollectionApi()
