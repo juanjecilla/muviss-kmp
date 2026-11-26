@@ -517,7 +517,7 @@ private val POSTER_COLUMN_WIDTH = 150.dp
  * extension of the list itself, and [start]/[end] are the logical padding that puts every row back inside the safe
  * area (#1067).
  */
-private class SideBands(val left: Dp, val right: Dp, val start: Dp, val end: Dp)
+internal class SideBands(val left: Dp, val right: Dp, val start: Dp, val end: Dp)
 
 /**
  * The Detail list. It runs sideways into a landscape cutout, as the Image Viewer does (#1067), and pads its rows back
@@ -541,7 +541,7 @@ internal fun DetailList(
 }
 
 @Composable
-private fun sideBandsOf(insets: WindowInsets): SideBands {
+internal fun sideBandsOf(insets: WindowInsets): SideBands {
     val padding = insets.asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
     return SideBands(
