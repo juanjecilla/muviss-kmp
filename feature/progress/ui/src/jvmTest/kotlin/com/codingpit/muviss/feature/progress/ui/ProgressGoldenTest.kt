@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.progress.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -118,14 +119,14 @@ private fun WatchNextUnderTest(darkTheme: Boolean) {
     )
     val progressRepository = FakeProgressRepository().apply { runBlocking { setSeenBulk(ticked, seen = true) } }
     val clock = FakeClock(TODAY_EPOCH_DAY * 86_400_000L)
-    val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(catalog)), InMemoryEpisodeCatalogStore())
+    val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(catalog)), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val watchNextViewModel = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, clock),
         TickEpisodeUseCase(ToggleEpisodeSeenUseCase(progressRepository), CompletionDetector.None),
         watchNextCache,
         FakeFeatureFlags(),
     )
-    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val upcomingViewModel = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
 
     MuvissTheme(darkTheme = darkTheme) {

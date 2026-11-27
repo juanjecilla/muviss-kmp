@@ -18,9 +18,8 @@ check() {
     failures=$((failures + 1))
   fi
 }
-# GNU stat first: on GNU, `stat -f` succeeds and prints filesystem data, so the
-# BSD form must not be tried first. On BSD/macOS `stat -c` is an error.
-file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+# file_mode, shared with the feedback tests (#1018).
+. "$ROOT_DIR/scripts/lib/file-mode.sh"
 is_mode_600() { [ "$(file_mode "$1")" = 600 ]; }
 is_link() { [ -L "$1" ]; }
 contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
@@ -305,6 +304,18 @@ else
   chmod 644 "$main/local.properties"
 fi
 
+echo "a temp file left by a killed run"
+
+# A SIGKILL skips the trap, so a copy run that died leaves its temp file behind (#1021).
+# The next run removes it, and git ignores the name so it never shows as untracked.
+rm -f "$wt/local.properties"
+printf 'partial' > "$wt/.local.properties.tmp.Ab3dEf"
+check "the temp name is ignored by git" git -C "$wt" check-ignore -q .local.properties.tmp.Ab3dEf
+run_in "$wt"
+check "the next copy removes the stale temp file" [ ! -e "$wt/.local.properties.tmp.Ab3dEf" ]
+check "and still publishes local.properties" cmp -s "$main/local.properties" "$wt/local.properties"
+check "and leaves no temp file of its own" no_temp "$wt"
+
 echo "worktree-setup.sh in the main checkout"
 
 rm -f "$wt/local.properties"
@@ -312,6 +323,21 @@ run_in "$main" --check
 check "--check from the main checkout exits 0" [ "$rc" = 0 ]
 check "--check from the main checkout changes nothing" same_as "$(cat "$main/local.properties")" "sdk.dir=/opt/android-sdk
 TMDB_API_KEY=$ROTATED"
+
+echo "worktree-setup.sh stale temp cleanup"
+
+# A SIGKILLed run leaves a script-named temp file; the next run removes it, but must
+# never touch a user file whose name only happens to be six characters after the dot.
+rm -f "$wt/local.properties"
+printf 'sdk.dir=/opt/android-sdk\n' > "$main/local.properties"
+printf 'mine\n' > "$wt/.local.properties.backup"
+printf 'stale\n' > "$wt/.local.properties.tmp.a1B2c3"
+run_in "$wt"
+check "a stale script temp file from a killed run is removed (exit 0)" [ "$rc" = 0 ]
+check "the stale script temp file is gone" [ ! -e "$wt/.local.properties.tmp.a1B2c3" ]
+check "a user's .local.properties.backup survives the run" same_as "$(cat "$wt/.local.properties.backup")" "mine"
+check "the copy is published alongside the user's backup" cmp -s "$main/local.properties" "$wt/local.properties"
+rm -f "$wt/.local.properties.backup" "$wt/local.properties"
 
 if [ "$failures" -gt 0 ]; then
   printf '%s failure(s)\n' "$failures"

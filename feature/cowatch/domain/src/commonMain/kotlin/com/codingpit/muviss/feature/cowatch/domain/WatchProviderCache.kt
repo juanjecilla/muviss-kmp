@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.cowatch.domain
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.concurrency.REFRESH_CONCURRENCY
 import com.codingpit.muviss.core.common.concurrency.mapBounded
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.models.MediaId
 
 /**
@@ -74,6 +75,8 @@ class WatchProviderRefresher(
     private val clock: AppClock,
     private val concurrency: Int = REFRESH_CONCURRENCY,
     private val maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
+    // Shared with Delete all data (#1056): an answer requested before the erase is not cached after it.
+    private val erasures: DataEraseFence,
 ) {
     /** Ensures the cache is current for [mediaIds], then returns each one's flatrate ids (fresh or, on a failed fetch, stale). */
     suspend fun refresh(mediaIds: Set<MediaId>): Map<MediaId, Set<String>> {
@@ -81,15 +84,17 @@ class WatchProviderRefresher(
         val region = source.region
         val now = clock.nowEpochMs()
         val cached = cache.get(mediaIds)
+        // Taken once for the batch, before its first fetch: a title asked after Delete all data is dropped with the rest (#1090).
+        val batch = erasures.batch()
         return mediaIds.toList().mapBounded(concurrency) { mediaId ->
             val existing = cached[mediaId]
             val fresh = existing != null && existing.region == region && now - existing.fetchedAtEpochMs < maxAgeMs
             val ids = if (fresh) {
                 existing.flatrateProviderIds
             } else {
-                source.fetchFlatrateIds(mediaId, region).getOrNull()
-                    ?.also { cache.put(mediaId, region, it) }
-                    ?: existing?.flatrateProviderIds.orEmpty()
+                val fetched = batch.guardedFetch { source.fetchFlatrateIds(mediaId, region).getOrNull() }
+                fetched.value?.let { ids -> fetched.write { cache.put(mediaId, region, ids) } }
+                fetched.value ?: existing?.flatrateProviderIds.orEmpty()
             }
             mediaId to ids
         }.toMap()

@@ -38,6 +38,8 @@
     <string name="snooze_placement">Los títulos pospuestos vuelven</string>
     <string name="tick_animations">Animar episodios vistos</string>
     <string name="tick_animations_body">Resalta el episodio al marcarlo como visto</string>
+    <string name="count_specials">Contar especiales en el progreso</string>
+    <string name="count_specials_body">Desactivado: los especiales aparecen en la lista pero no cambian el progreso de la serie. Activado: un especial ya emitido que no has visto mantiene la serie en curso. Se activó solo si ya habías marcado algún especial. Importar especiales nunca lo activa.</string>
     <string name="swipe_animations">Animaciones al deslizar</string>
     <string name="swipe_animations_body">Las tarjetas salen volando al decidir, y deshacer las trae de vuelta</string>
     <string name="import">Importar</string>
