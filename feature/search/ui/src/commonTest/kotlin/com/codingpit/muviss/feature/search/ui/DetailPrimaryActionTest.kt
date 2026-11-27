@@ -31,6 +31,7 @@ class DetailPrimaryActionTest {
         seen: Set<EpisodeId> = emptySet(),
         status: WatchStatus? = null,
         saved: Boolean = true,
+        specialsCounted: Boolean = true,
     ) = DetailUiState(
         loading = false,
         details = MediaDetails(summary = MediaSummary(show, "Show"), seasons = seasons.toList()),
@@ -39,6 +40,7 @@ class DetailPrimaryActionTest {
         progressLoaded = true,
         seenEpisodes = seen,
         watchStatus = status,
+        specialsCounted = specialsCounted,
     )
 
     /** The answer `ProgressApi.nextEpisodes` gives for [state]: the same derivation it calls, so the two cannot drift. */
@@ -159,6 +161,23 @@ class DetailPrimaryActionTest {
         )
 
         assertEquals(PrimaryAction.SpecialUnseen(special), primaryFor(state))
+    }
+
+    @Test
+    fun with_specials_not_counted_an_unseen_aired_special_leaves_the_button_caught_up() {
+        // #938: the setting is off by default, so the special is not progress and the show is caught up.
+        val special = episode(0, 1, airDay = 5)
+        val regular = episode(1, 1, airDay = 10)
+        val announced = episode(1, 2, airDay = 99)
+        val state = showState(
+            Season(0, "Specials", listOf(special)),
+            Season(1, "Season 1", listOf(regular, announced)),
+            seen = setOf(regular.id),
+            status = WatchStatus.WATCHED,
+            specialsCounted = false,
+        )
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, announced), primaryFor(state))
     }
 
     @Test

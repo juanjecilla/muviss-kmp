@@ -154,7 +154,10 @@ data class ListEntryExport(
     val updatedAtEpochMs: Long,
 )
 
-/** One Taste Profile item (EPIC 51, #402). [id] is the derived `kind:value` key the row is stored under. */
+/**
+ * One Taste Profile item (EPIC 51, #402). [id] is the derived `kind:value` key the row is stored under.
+ * [deleted] is the tombstone of an unlike; it defaults to false so a backup from before it still parses.
+ */
 @Serializable
 data class TasteProfileItemExport(
     val id: String,
@@ -162,6 +165,7 @@ data class TasteProfileItemExport(
     val value: String,
     val label: String,
     val updatedAtEpochMs: Long,
+    val deleted: Boolean = false,
 )
 
 @Serializable

@@ -24,8 +24,9 @@ import kotlin.test.assertTrue
 /**
  * The Taste Profile's round trip through a backup (EPIC 51, #402). The rule it pins
  * is the one restore promises for every table: per-row last-write-wins on the item's
- * stamp, a restored item goes out dirty, and a removed item is simply absent from
- * the file.
+ * stamp, a restored item goes out dirty, and a removed item travels as a tombstone
+ * (#1070), so a backup taken after an unlike removes the item on a device that
+ * still holds the like.
  */
 class TasteProfileBackupTest {
 
@@ -124,6 +125,32 @@ class TasteProfileBackupTest {
 
         assertTrue(local.tasteProfileQueries.selectById(ACTION).awaitAsOneOrNull()!!.deleted)
         assertTrue(local.tasteProfileQueries.selectAll().awaitAsList().isEmpty())
+    }
+
+    @Test
+    fun `an unliked item is in the export as a tombstone`() = runTest {
+        val source = inMemoryDatabase()
+        write(source, ACTION, updatedAt = 2_000L, deleted = true)
+
+        val exported = Json.decodeFromString<MuvissDataExport>(exporter(source).exportData())
+
+        val item = exported.tasteProfile.single()
+        assertEquals(ACTION, item.id)
+        assertTrue(item.deleted)
+    }
+
+    @Test
+    fun `a backup taken after an unlike removes the item from a device that still has the like`() = runTest {
+        val source = inMemoryDatabase()
+        write(source, ACTION, updatedAt = 2_000L, deleted = true)
+        val backup = exporter(source).exportData()
+
+        val other = inMemoryDatabase()
+        write(other, ACTION, updatedAt = 1_000L)
+        restorer(other).restore(backup)
+
+        assertTrue(other.tasteProfileQueries.selectById(ACTION).awaitAsOneOrNull()!!.deleted)
+        assertTrue(other.tasteProfileQueries.selectAll().awaitAsList().isEmpty())
     }
 
     @Test

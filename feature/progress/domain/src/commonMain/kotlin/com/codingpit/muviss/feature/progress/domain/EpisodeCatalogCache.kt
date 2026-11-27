@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
 import com.codingpit.muviss.core.common.concurrency.mapBounded
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,8 @@ import kotlinx.coroutines.flow.update
 class EpisodeCatalogCache(
     private val fetchEpisodeCatalog: FetchEpisodeCatalogUseCase,
     private val store: EpisodeCatalogStore,
+    // Shared with Delete all data (#1056): a fetch that lands after the erase must not re-create the deleted rows.
+    private val erasures: DataEraseFence,
 ) {
 
     private val _catalogs = MutableStateFlow<Map<MediaId, List<Season>>>(emptyMap())
@@ -71,9 +74,13 @@ class EpisodeCatalogCache(
      * worse than keeping it.
      */
     private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> = mediaIds.mapBounded { id ->
-        fetchEpisodeCatalog(id).onSuccess { seasons ->
-            store.save(id, seasons)
-            _catalogs.update { it + (id to seasons) }
+        // Taken before TMDB is asked: an answer requested before Delete all data stores nothing after it (#1056).
+        val fetched = erasures.guardedFetch { fetchEpisodeCatalog(id) }
+        fetched.value.onSuccess { seasons ->
+            fetched.write {
+                store.save(id, seasons)
+                _catalogs.update { it + (id to seasons) }
+            }
         }.exceptionOrNull()
     }.filterNotNull()
 }
