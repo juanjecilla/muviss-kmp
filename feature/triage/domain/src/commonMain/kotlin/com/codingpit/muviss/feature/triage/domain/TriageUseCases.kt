@@ -18,11 +18,13 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Serialises a verdict's side effects with an Undo on the same title (#792).
@@ -65,6 +67,11 @@ internal object TriageTitleLocks {
  * What the verdict *took* is recorded as it happens, so Undo can reverse
  * exactly that and nothing else: whether it created the library entry (#767),
  * the entry's added-at stamp (#902), and the viewings its ticks wrote (#790).
+ *
+ * The add and the claim write are one guarded unit (#1071). If either fails after this attempt brought the entry in,
+ * the entry is taken back before the failure is thrown, so the retry starts from the state before the verdict. The
+ * rollback cannot run if the process dies between the add and the claim write, and nothing else in-process can
+ * close that window; the entry then stays unclaimed (ADR 0010's amendment, #1076).
  */
 class RecordDecisionUseCase(
     private val repository: TriageDecisionRepository,
@@ -105,7 +112,6 @@ class RecordDecisionUseCase(
     private suspend fun writeVerdict(mediaId: MediaId, details: MediaDetails) {
         // Read live, under the lock. Gone means an Undo took the decision back, and writing anything would put the title back.
         val stored = repository.observeDecision(mediaId).first() ?: return
-        val today = clock.todayEpochDay()
 
         // #791: the claim is the library's state immediately before the add that makes the entry. A stamped claim an
         // earlier attempt recorded is kept, because that attempt's add made the entry and the entry being there now
@@ -114,36 +120,13 @@ class RecordDecisionUseCase(
         val absentBeforeAdd = collectionApi.observeMembership(mediaId).first() == null
         // #1058: a claim recorded before the stamp column (createdEntry with no stamp) cannot say which entry it is
         // about. If an entry is present now it may be a replacement the person added, so the claim is retired rather
-        // than transferred to it. Undo then leaves whatever is in the library alone. The cost, an entry this verdict
-        // created surviving undo, is tracked in #1064.
+        // than transferred to it. Undo then leaves whatever is in the library alone. The trade-off, an entry this
+        // verdict created surviving undo, is accepted and documented in ADR 0010 (#1064).
         val legacyClaim = stored.createdEntry && stored.entryAddedAtEpochMs == null
         val claimed = absentBeforeAdd || (stored.createdEntry && !legacyClaim)
 
-        collectionApi.add(details)
-        // #902: the stamp belongs to the entry the claim is about. This attempt's add made a new entry, so that entry's
-        // stamp is read. Otherwise the add found an entry already there, which may be a replacement the person added
-        // after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
-        // replacement's (undo then sees a different stamp and leaves the replacement alone).
-        val stamp = when {
-            absentBeforeAdd -> addedAtOf(mediaId)
-            claimed -> stored.entryAddedAtEpochMs
-            else -> null
-        }
-
-        // Recorded once the add has landed and before the ticks run, so a tick that fails midway still leaves undo the
-        // full list. Only episodes not already seen are planned, so undo can never take back a viewing the person made.
-        // Each planned tick's viewing is named now, at the moment it will be written (EpisodePlay.idOf), so the record
-        // holds the ids the ticks will carry.
         val now = clock.nowEpochMs()
-        val seenBefore = progressApi.observeSeenEpisodes(mediaId).first()
-        val planned = plannedTicks(details, stored.verdict, seenBefore, today)
-        repository.record(
-            stored.copy(
-                createdEntry = claimed,
-                entryAddedAtEpochMs = stamp,
-                tickedPlayIds = (stored.tickedPlayIds + planned.map { EpisodePlay.idOf(it, now) }).distinct(),
-            ),
-        )
+        val planned = addAndClaim(details, stored, absentBeforeAdd, claimed, now)
 
         // One write for every planned tick: a whole show's Caught up is one transaction, and the viewings it writes
         // carry the ids recorded above. SKIP and LATER plan nothing; WATCHING ticks the first aired episode, so the show
@@ -151,6 +134,79 @@ class RecordDecisionUseCase(
         // (ProgressApi.markAllAiredSeen's set, not markPreviousSeen's).
         if (planned.isNotEmpty()) progressApi.recordFirstPlays(planned, watchedAtEpochMs = now)
         repository.markResolved(mediaId, resolved = true)
+    }
+
+    /**
+     * The add and the claim write, as one unit (#1071). The claim is recorded once the add has landed and before the
+     * ticks run, so a tick that fails midway still leaves undo the full list. If the add or the claim write fails after
+     * this attempt brought the entry in, the entry is taken back: no claim names it, and a retry would otherwise find it
+     * present, take it for someone else's, and leave it behind on undo. The rollback is only attempted when the title
+     * was absent before the add, so an entry the person already had is never removed.
+     *
+     * Returns the viewings the ticks should write, which are read here and written after the claim.
+     */
+    private suspend fun addAndClaim(
+        details: MediaDetails,
+        stored: TriageDecision,
+        absentBeforeAdd: Boolean,
+        claimed: Boolean,
+        now: Long,
+    ): List<EpisodeId> {
+        val mediaId = stored.mediaId
+        var ownStamp: Long? = null
+        var claimWritten = false
+        // A finally rather than a catch: the rollback has to run on cancellation too, and a catch of Throwable is too wide for detekt.
+        try {
+            collectionApi.add(details)
+            // #902: the stamp belongs to the entry the claim is about. This attempt's add made a new entry, so that
+            // entry's stamp is read. Otherwise the add found an entry already there, which may be a replacement the person
+            // added after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
+            // replacement's (undo then sees a different stamp and leaves the replacement alone).
+            // A claim without its stamp is the pre-stamp shape #1058 retires, so an add whose stamp cannot be read fails
+            // the attempt instead of writing one. The finally then rolls the add back.
+            if (absentBeforeAdd) ownStamp = checkNotNull(addedAtOf(mediaId)) { "the add did not leave a readable entry for $mediaId" }
+            val stamp = when {
+                absentBeforeAdd -> ownStamp
+                claimed -> stored.entryAddedAtEpochMs
+                else -> null
+            }
+            // Only episodes not already seen are planned, so undo can never take back a viewing the person made. Each
+            // planned tick's viewing is named now, at the moment it will be written (EpisodePlay.idOf), so the record
+            // holds the ids the ticks will carry.
+            val seenBefore = progressApi.observeSeenEpisodes(mediaId).first()
+            val planned = plannedTicks(details, stored.verdict, seenBefore, clock.todayEpochDay())
+            repository.record(
+                stored.copy(
+                    createdEntry = claimed,
+                    entryAddedAtEpochMs = stamp,
+                    tickedPlayIds = (stored.tickedPlayIds + planned.map { EpisodePlay.idOf(it, now) }).distinct(),
+                ),
+            )
+            claimWritten = true
+            return planned
+        } finally {
+            if (!claimWritten && absentBeforeAdd) rollBackAdd(mediaId, ownStamp)
+        }
+    }
+
+    /**
+     * Takes back the entry this attempt brought in, after a failure that left no claim for it (#1071). Runs under
+     * [NonCancellable] because the usual trigger is the person leaving the screen mid-verdict. A failed rollback is
+     * swallowed so the original failure is the one thrown: the entry then stays unclaimed, the bug this guards
+     * against, and is recorded as a known residual in ADR 0010.
+     *
+     * Known residual (#1076): a person's own add from Detail takes no triage lock, so one landing in the milliseconds
+     * between the membership check and this attempt's add is indistinguishable from this attempt's add. If the claim
+     * then fails, the rollback takes the person's entry back too.
+     */
+    private suspend fun rollBackAdd(mediaId: MediaId, ownStamp: Long?) {
+        withContext(NonCancellable) {
+            val liveStamp = addedAtOf(mediaId) ?: return@withContext
+            // A stamp read after the add must still match, so an entry someone else added in the meantime is not removed.
+            if (ownStamp != null && liveStamp != ownStamp) return@withContext
+            // A failed rollback cannot be reported over the failure that caused it; the entry then stays unclaimed (ADR 0010).
+            runCatching { collectionApi.remove(mediaId) }
+        }
     }
 
     /** The added-at stamp of [mediaId]'s live library entry, or null when it is not saved. */
@@ -191,6 +247,13 @@ class RecordDecisionUseCase(
  * exactly the viewings the verdict wrote ([TriageDecision.tickedPlayIds]) through
  * [ProgressApi.removePlay]. An episode the person has since rewatched keeps that
  * rewatch and stays seen; an episode with no viewings left is un-ticked.
+ *
+ * Pre-stamp claims (#1058, #1064). A claim written before the stamp column can name no entry, so a retry retires it
+ * instead of transferring it. An entry the verdict created and then left behind by a retry is therefore kept by undo,
+ * even though it is the verdict's own. This is the accepted trade-off: the fail direction is the safe one, because
+ * the person keeps a title rather than losing one they added. No code path writes a claim without a stamp any more
+ * (#1071 made the add and the claim one guarded unit), so the case only arises from rows written by older builds and
+ * left unresolved, and the set can only shrink.
  *
  * This holds for an entry the verdict created too. Progress that was on the title
  * before the verdict is kept, because the verdict did not write it: it is what a

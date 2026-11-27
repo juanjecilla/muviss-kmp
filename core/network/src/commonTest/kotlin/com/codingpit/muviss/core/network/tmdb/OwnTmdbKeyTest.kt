@@ -13,7 +13,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class OwnTmdbKeyTest {
@@ -44,7 +43,7 @@ class OwnTmdbKeyTest {
         }
         verdict.complete(KeyCheck.Accepted)
 
-        assertNotEquals(SaveOwnKeyResult.Saved, saving.await(), "a key checked before Delete all data is not reported as saved")
+        assertEquals(SaveOwnKeyResult.Erased, saving.await(), "a key checked before Delete all data is reported as erased, not saved and not a failed check")
         assertNull(store.get(OwnTmdbKey.STORE_NAME), "nor stored after it, where it would survive the erase")
         assertNull(key.credentials())
     }

@@ -241,17 +241,27 @@ class OnboardingViewModel(
             // As in Settings' TmdbKeyViewModel: a store failure throws out of save, and the
             // dialog is locked while `keyChecking`, so it is released whatever happens.
             var problem: TmdbKeyProblem? = TmdbKeyProblem.COULD_NOT_CHECK
+            var saved = false
             try {
                 problem = when (tmdbKey.save(raw)) {
-                    SaveTmdbKeyResult.SAVED -> null
+                    SaveTmdbKeyResult.SAVED -> {
+                        saved = true
+                        null
+                    }
+
                     SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
+
                     SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
+
                     SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+
+                    // Delete all data cleared the key mid-check: no error, and not "saved" either.
+                    SaveTmdbKeyResult.ERASED -> null
                 }
             } finally {
                 _state.update { it.copy(keyChecking = false, keyProblem = problem) }
             }
-            if (problem == null) onSaved()
+            if (saved) onSaved()
         }
     }
 

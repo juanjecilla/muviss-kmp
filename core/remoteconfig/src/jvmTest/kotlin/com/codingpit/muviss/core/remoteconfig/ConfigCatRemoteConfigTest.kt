@@ -1,17 +1,23 @@
 package com.codingpit.muviss.core.remoteconfig
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 import com.codingpit.muviss.core.common.remoteconfig.NEXT_PICK_DEFAULT_RESULT_MODE
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.configcat.ConfigCatClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,6 +38,9 @@ class ConfigCatRemoteConfigTest {
         const val ROTATED = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJyb3RhdGVkIn0.c2lnbmF0dXJl"
     }
     private var requests = 0
+
+    /** Runs inside the engine's handler before it answers: a test holds the SDK's fetch here. */
+    private var beforeAnswering: suspend () -> Unit = {}
     private var body: String = served(byok = true, token = ROTATED)
     private var status = HttpStatusCode.OK
 
@@ -43,6 +52,7 @@ class ConfigCatRemoteConfigTest {
 
     private val engine = MockEngine {
         requests++
+        beforeAnswering()
         respond(
             body,
             status,
@@ -58,13 +68,59 @@ class ConfigCatRemoteConfigTest {
     private var keyCounter = 0
     private fun sdkKey() = "configcat-sdk-1/${"k${++keyCounter}x${System.nanoTime()}".padEnd(22, 'a').take(22)}/aaaaaaaaaaaaaaaaaaaaaa"
 
-    private fun remote(key: String, db: MuvissDatabase, clock: FakeClock) = ConfigCatRemoteConfig(
+    private fun remote(key: String, db: MuvissDatabase, clock: FakeClock, erasures: DataEraseFence = DataEraseFence()) = ConfigCatRemoteConfig(
         sdkKey = key,
         engine = engine,
         cache = SqlDelightConfigCache(db.remoteConfigCacheQueries),
         defaults = defaults,
         clock = clock,
+        erasures = erasures,
     )
+
+    private fun SqlDriver.rowCount(): Long = executeQuery(
+        identifier = null,
+        sql = "SELECT COUNT(*) FROM remoteConfigCache",
+        mapper = { cursor ->
+            check(cursor.next().value)
+            QueryResult.Value(cursor.getLong(0)!!)
+        },
+        parameters = 0,
+    ).value
+
+    @Test
+    fun a_refresh_in_flight_during_delete_all_data_stores_no_config() = runTest {
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        val arrived = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAnswering = {
+            arrived.complete(Unit)
+            release.await()
+        }
+        val config = remote(sdkKey(), db, FakeClock(0), fence)
+
+        val refreshing = async { config.refreshIfStale() }
+        arrived.await() // the SDK has asked TMDB's CDN; its answer is held here
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+        release.complete(Unit)
+        refreshing.await()
+
+        assertEquals(0L, driver.rowCount(), "a config fetched before Delete all data is not stored after it")
+    }
+
+    @Test
+    fun a_refresh_that_starts_after_delete_all_data_stores_the_config() = runTest {
+        // The positive control: the fence drops only writes requested before an erase, never all of them.
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+
+        remote(sdkKey(), db, FakeClock(0), fence).refreshIfStale()
+
+        assertEquals(1L, driver.rowCount())
+    }
 
     @Test
     fun nothing_is_fetched_until_a_refresh_is_asked_for() = runTest {
