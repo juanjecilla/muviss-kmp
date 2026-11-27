@@ -5,15 +5,22 @@ import com.codingpit.muviss.core.model.WatchStatusCalculator
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.MediaDetails
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RecordDecisionUseCaseTest {
@@ -276,13 +283,83 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
-    fun a_cancelled_claim_write_still_takes_the_added_entry_back() = runTest {
+    fun a_verdict_cancelled_during_its_claim_write_propagates_and_still_takes_the_added_entry_back() = runTest {
         val h = harness()
-        h.repository.failClaimWrite = kotlinx.coroutines.CancellationException("left the screen")
+        h.repository.beforeClaimWrite = { awaitCancellation() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
 
-        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure)
-
+        assertNull(outcome, "a cancelled verdict must not return a Result, it must throw the cancellation (#1079)")
         assertEquals(emptyList(), h.collection.summaries.value)
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
+    fun a_caller_cancelled_during_the_rollback_after_a_failed_claim_still_ends_cancelled_not_failed() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        val gate = CompletableDeferred<Unit>()
+        h.collection.beforeRemove = { gate.await() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        gate.complete(Unit)
+        job.join()
+
+        assertNull(outcome, "a cancelled caller must end cancelled even when the failure was not a cancellation (#1079)")
+        assertEquals(emptyList(), h.collection.summaries.value, "the rollback still runs to completion under NonCancellable")
+    }
+
+    @Test
+    fun a_verdict_cancelled_while_its_title_is_fetched_propagates_the_cancellation() = runTest {
+        val useCase = RecordDecisionUseCase(
+            FakeTriageDecisionRepository(),
+            FakeCollectionApi(),
+            FakeProgressApi(),
+            object : TriageDetailsSource {
+                override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = awaitCancellation()
+            },
+            FakeClock(NOW_EPOCH_MS),
+        )
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
+
+        assertNull(outcome, "a cancelled verdict must not return a Result, it must throw the cancellation (#1079)")
+    }
+
+    @Test
+    fun a_cancellation_from_an_inner_source_while_the_caller_is_alive_is_a_failure() = runTest {
+        val useCase = RecordDecisionUseCase(
+            FakeTriageDecisionRepository(),
+            FakeCollectionApi(),
+            FakeProgressApi(),
+            object : TriageDetailsSource {
+                override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = Result.failure(kotlinx.coroutines.CancellationException("inner source cancelled"))
+            },
+            FakeClock(NOW_EPOCH_MS),
+        )
+
+        val result = useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        assertTrue(result.isFailure, "the caller is not cancelled, so the failure is returned for the retry UI (#1079)")
+    }
+
+    @Test
+    fun a_failed_rollback_does_not_replace_the_failure_that_caused_it() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.collection.failRemove = IllegalStateException("remove failed too")
+
+        val failure = h.useCase(endedShow, TriageVerdict.CAUGHT_UP).exceptionOrNull()
+
+        assertEquals("disk full", failure?.message, "the original failure is the one thrown; the rollback failure is reported")
         assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
     }
 
