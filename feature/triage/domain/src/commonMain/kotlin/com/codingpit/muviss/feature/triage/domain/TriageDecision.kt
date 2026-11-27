@@ -22,6 +22,8 @@ import com.codingpit.muviss.models.MediaSummary
  * first attempt, just before the add, and retries keep it (#791). A claim with
  * no stamp (written before the stamp column) is the exception: a retry retires
  * it rather than keep it, since it cannot say which entry it is about (#1058).
+ * The cost of that retirement, an entry the verdict created surviving undo, is
+ * an accepted trade-off (ADR 0010's amendment, #1064).
  *
  * [entryAddedAtEpochMs] is the added-at stamp of the entry this verdict created,
  * read right after the add (#902). Undo removes the entry only while its current
