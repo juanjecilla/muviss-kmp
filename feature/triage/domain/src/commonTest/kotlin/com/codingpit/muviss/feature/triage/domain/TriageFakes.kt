@@ -42,9 +42,13 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     var failUnclaimedClaimWrite: Throwable? = null
     private var writes = 0
 
+    /** Runs before a claim write, so a test can suspend the write and cancel the verdict while it is in flight (#1079). */
+    var beforeClaimWrite: (suspend () -> Unit)? = null
+
     override suspend fun record(decision: TriageDecision) {
         writes++
         if (decision.createdEntry) {
+            beforeClaimWrite?.invoke()
             failClaimWrite?.let {
                 failClaimWrite = null
                 throw it
@@ -104,7 +108,11 @@ internal class FakeCollectionApi(initial: List<CollectionSummary> = emptyList())
     /** Thrown by [remove] before it records anything, to simulate a failed cleanup. */
     var failRemove: Throwable? = null
 
+    /** Runs before [remove] records anything, so a test can hold a rollback open and cancel the caller inside it (#1079). */
+    var beforeRemove: (suspend () -> Unit)? = null
+
     override suspend fun remove(mediaId: MediaId) {
+        beforeRemove?.invoke()
         failRemove?.let { throw it }
         removed += mediaId
         summaries.value = summaries.value.filterNot { it.mediaId == mediaId }
