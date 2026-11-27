@@ -46,10 +46,11 @@ class AndroidNotificationPermissionRequester(private val context: Context) : Not
     /**
      * False only when the prompt has been shown here before, the OS will no longer show it (no rationale), and the
      * permission is not granted. With no activity lent, nothing can be asked, so this cannot say no.
+     * [granted] is the grant the caller already read (see [observeNotificationStatus]), never a fresh read.
      */
-    fun canAskAgain(): Boolean {
+    fun canAskAgain(granted: Boolean): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-        if (NotificationPermission.granted(context)) return true
+        if (granted) return true
         if (!prefs.getBoolean(KEY_ASKED_ONCE, false)) return true
         val lentRationale = rationale ?: return true
         return lentRationale()
