@@ -209,6 +209,12 @@ SELECT *
 FROM episodePlay
 WHERE deleted = 0;
 
+-- Every row, tombstones included, for the data export (#1074): a backup carries a removal so a device still
+-- holding the live row removes it on restore. `selectAll` keeps filtering `deleted`.
+selectAllIncludingDeleted:
+SELECT *
+FROM episodePlay;
+
 selectDirty:
 SELECT *
 FROM episodePlay
@@ -240,13 +246,24 @@ DELETE FROM episodePlay;
 -- the derived `episodeId@watchedAtEpochMs` (ADR 0013), so two devices that each
 -- repair the same tick write the same row rather than two. It is dirty: the
 -- server may not have it either.
+--
+-- A tombstone already holding that derived id is a removal of this very
+-- viewing. When its stamp is at least the tick's, it wins last-write-wins, so
+-- the backfill must not `OR REPLACE` it back to live (#1084 restore, and the
+-- same resurrection on a pulled tombstone). A legacy backup or an older
+-- tombstone with a smaller stamp still backfills.
 insertMissingPlaysForSeen:
 INSERT OR REPLACE INTO episodePlay(id, episodeId, mediaId, watchedAtEpochMs, updatedAtEpochMs, isDirty, deleted)
 SELECT p.episodeId || '@' || p.updatedAtEpochMs, p.episodeId, p.mediaId, p.updatedAtEpochMs, p.updatedAtEpochMs, 1, 0
 FROM episodeProgress p
 WHERE p.mediaId IN :mediaIds
   AND p.seen = 1
-  AND NOT EXISTS (SELECT 1 FROM episodePlay e WHERE e.episodeId = p.episodeId AND e.deleted = 0);
+  AND NOT EXISTS (SELECT 1 FROM episodePlay e WHERE e.episodeId = p.episodeId AND e.deleted = 0)
+  AND NOT EXISTS (
+      SELECT 1 FROM episodePlay t
+      WHERE t.id = p.episodeId || '@' || p.updatedAtEpochMs
+        AND t.updatedAtEpochMs >= p.updatedAtEpochMs
+  );
 
 -- An un-tick wins: the viewings of an episode that ended up not seen are
 -- tombstoned. Otherwise `recordPlaysForUnseen` sees a live play, skips the

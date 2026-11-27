@@ -4,8 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.sizedImageUrl
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -53,6 +53,8 @@ internal fun Modifier.opensImageViewer(url: String?, kind: ImageKind, onOpen: (I
             ImageKind.Still -> Res.string.image_name_still
         },
     )
+    // clearAndSetSemantics, not semantics: a merged description is appended to the picture's own (its title, while it
+    // loads), so the name would change when the picture arrives. The kind is the whole name, whatever the picture is.
     return clickable(onClickLabel = action, role = Role.Button) { onOpen(kind, url) }
-        .semantics { contentDescription = name }
+        .clearAndSetSemantics { contentDescription = name }
 }

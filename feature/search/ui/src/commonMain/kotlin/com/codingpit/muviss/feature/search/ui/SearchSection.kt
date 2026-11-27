@@ -4,6 +4,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
@@ -67,7 +68,7 @@ fun NavGraphBuilder.searchSection(
             // grows the back stack and Back unwinds it one title at a time.
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
-            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(id.toString(), kind.name, url)) },
+            onOpenImage = { kind, url -> navController.openImageViewer(ImageViewerRoute(id.toString(), kind.name, url)) },
             onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
@@ -81,7 +82,7 @@ fun NavGraphBuilder.searchSection(
         EpisodeDetailScreen(
             viewModel,
             onBack = { navController.popBackStack() },
-            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
+            onOpenImage = { kind, url -> navController.openImageViewer(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
             onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
         )
     }
@@ -103,4 +104,16 @@ fun NavGraphBuilder.searchSection(
             linkLanguage = linkLanguage(),
         )
     }
+}
+
+/**
+ * Opens the Image Viewer for [route]. Single-top, so a second tap while a viewer is still being pushed does not stack a
+ * second viewer, which Back would then show before reaching the title. A tap on a *different* artwork in that moment is
+ * dropped too: the viewer that is on top stays on its first artwork.
+ */
+internal fun NavController.openImageViewer(route: ImageViewerRoute) {
+    // launchSingleTop alone would swap the on-top viewer's arguments for the second artwork's, so a viewer that is
+    // already on top is left as it is.
+    if (currentBackStackEntry?.destination?.hasRoute<ImageViewerRoute>() == true) return
+    navigate(route) { launchSingleTop = true }
 }

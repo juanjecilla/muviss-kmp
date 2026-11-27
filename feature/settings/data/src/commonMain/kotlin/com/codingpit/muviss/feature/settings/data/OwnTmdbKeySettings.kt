@@ -24,6 +24,7 @@ class OwnTmdbKeySettings(private val ownKey: OwnTmdbKey) : TmdbKeyApi {
         SaveOwnKeyResult.Malformed -> SaveTmdbKeyResult.MALFORMED
         SaveOwnKeyResult.Rejected -> SaveTmdbKeyResult.REJECTED
         SaveOwnKeyResult.CouldNotCheck -> SaveTmdbKeyResult.COULD_NOT_CHECK
+        SaveOwnKeyResult.Erased -> SaveTmdbKeyResult.ERASED
     }
 
     override suspend fun clear() = ownKey.clear()

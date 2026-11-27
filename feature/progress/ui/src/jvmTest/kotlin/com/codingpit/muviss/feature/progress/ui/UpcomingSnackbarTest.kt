@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -57,7 +58,7 @@ class UpcomingSnackbarTest {
             },
         )
         val api = FakeUpcomingCollectionApi(shows.mapIndexed { i, id -> CollectionSummary(id, "Show ${i + 1}", posterUrl = null, status = WatchStatus.WATCHING) })
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore())
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore(), DataEraseFence())
         val viewModel = UpcomingViewModel(api, cache, FakeClock(TODAY_MILLIS))
         setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {

@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.progress.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
@@ -63,7 +64,7 @@ class UpcomingScreenErrorCopyTest {
 @Composable
 private fun UpcomingWithFailure(failure: Throwable) {
     val collectionApi = FakeUpcomingCollectionApi(emptyList(), failure = failure)
-    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val viewModel = UpcomingViewModel(collectionApi, cache, FakeClock(0L))
 
     MuvissTheme(darkTheme = false) {

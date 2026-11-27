@@ -72,9 +72,10 @@ internal const val EMPTY_PAGE = """{"page":1,"results":[],"total_pages":1}"""
 internal const val ONE_RESULT_PAGE =
     """{"page":1,"total_pages":1,"results":[{"id":603,"media_type":"movie","title":"The Matrix","release_date":"1999-03-31"}]}"""
 
-/** TMDB's documented `/tv/{id}` shape, with [seasonCount] real seasons plus the "Specials" season 0. */
-internal fun tvShowJson(seasonCount: Int): String {
-    val seasons = (0..seasonCount).joinToString(",") {
+/** TMDB's documented `/tv/{id}` shape: [seasonCount] real seasons, plus the "Specials" season 0 when [specials] is set. */
+internal fun tvShowJson(seasonCount: Int, specials: Boolean = false): String {
+    val numbers = if (specials) (0..seasonCount) else (1..seasonCount)
+    val seasons = numbers.joinToString(",") {
         """{"season_number":$it,"name":"Season $it","episode_count":2}"""
     }
     return """{"id":1399,"name":"Show","number_of_seasons":$seasonCount,"seasons":[$seasons],"status":"Ended","external_ids":{"imdb_id":"tt1"}}"""
