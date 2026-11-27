@@ -101,7 +101,8 @@ jobs:
             [ -n "$found" ] || { echo "no open back-merge PR at $TESTED_SHA; nothing to do"; exit 0; }
             BRANCH="${found#* }"
           fi
-          pr="$(gh pr list --head "$BRANCH" --base develop --state open \
+          # --limit: the fork filter runs after the list, so a capped list could drop the same-repo PR.
+          pr="$(gh pr list --head "$BRANCH" --base develop --state open --limit 100 \
             --json number,author,baseRefName,headRefName,headRefOid,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | .[0] // empty')"
           [ -n "$pr" ] || { echo "no open PR into develop for $BRANCH; nothing to do"; exit 0; }
           number="$(jq -r .number <<<"$pr")"

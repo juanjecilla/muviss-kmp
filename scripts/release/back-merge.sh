@@ -88,14 +88,18 @@ stale() {
 }
 
 # A failed listing exits nonzero: a run that cannot see the PR must not read as
-# "nothing to merge" and stop for good.
+# "nothing to merge" and stop for good. gh api pages through every open PR into
+# develop (a plain gh pr list is capped by its --limit, as stale() explains), and
+# a PR from a fork is dropped before the first match, so a fork branch at the
+# same SHA cannot hide the release's own back-merge.
 pr_at() {
   local sha="$1" prs
   [ -n "$sha" ] || { echo "usage: $0 pr-at SHA" >&2; return 2; }
-  prs="$(gh pr list --base develop --state open --limit 200 --json number,headRefName,headRefOid)" \
+  prs="$(gh api --paginate "repos/{owner}/{repo}/pulls?base=develop&state=open&per_page=100" \
+    --jq '.[] | {number, headRefName: .head.ref, headRefOid: .head.sha, isCrossRepository: (.head.repo.full_name != .base.repo.full_name)}')" \
     || { echo "could not list the open PRs into develop" >&2; return 1; }
-  jq -r --arg sha "$sha" \
-    '[.[] | select(.headRefOid == $sha and (.headRefName | test("^back-merge/v[0-9]")))] | .[0] // empty | "\(.number) \(.headRefName)"' <<<"$prs"
+  jq -rs --arg sha "$sha" \
+    '[.[] | select(.headRefOid == $sha and (.isCrossRepository | not) and (.headRefName | test("^back-merge/v[0-9]")))] | .[0] // empty | "\(.number) \(.headRefName)"' <<<"$prs"
 }
 
 case "${1:-}" in
