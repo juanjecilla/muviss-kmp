@@ -11,15 +11,28 @@ import androidx.core.content.ContextCompat
 import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 
+/**
+ * Derives both fields of one [NotificationStatus] from a single read of the grant (#1016): [canAskAgain] receives
+ * the value [granted] returned, never a fresh read, so a grant that changes mid-call cannot pair a "blocked" from
+ * before the change with a "can ask again" from after it.
+ */
+internal fun observeNotificationStatus(
+    granted: () -> Boolean,
+    canAskAgain: (granted: Boolean) -> Boolean,
+): NotificationStatus {
+    val allowed = granted()
+    return NotificationStatus(blocked = !allowed, canAskAgain = canAskAgain(allowed))
+}
+
 /** Android's answer to [SystemNotificationSettings] (EPIC 30, #73). */
 class AndroidNotificationSettings(
     private val context: Context,
     private val permissions: AndroidNotificationPermissionRequester,
 ) : SystemNotificationSettings {
 
-    override suspend fun statusNow(): NotificationStatus = NotificationStatus(
-        blocked = !NotificationPermission.granted(context),
-        canAskAgain = permissions.canAskAgain(),
+    override suspend fun statusNow(): NotificationStatus = observeNotificationStatus(
+        granted = { NotificationPermission.granted(context) },
+        canAskAgain = permissions::canAskAgain,
     )
 
     override fun open() {
