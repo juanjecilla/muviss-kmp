@@ -110,6 +110,33 @@ class ConfigCatRemoteConfigTest {
     }
 
     @Test
+    fun a_cancelled_refresh_whose_fetch_is_still_in_flight_stores_nothing_after_delete_all_data() = runTest {
+        // #1080: the SDK runs the fetch in its own coroutine. Cancelling the refresh must not leave that fetch
+        // running unfenced while a second refresh, started after the erase, joins it and passes the check.
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        val arrived = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAnswering = {
+            arrived.complete(Unit)
+            release.await()
+        }
+        val config = remote(sdkKey(), db, FakeClock(0), fence)
+
+        val first = async { config.refreshIfStale() }
+        arrived.await() // the SDK has asked TMDB's CDN; its answer is held here
+        first.cancel()
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+        val second = async { config.refreshIfStale() }
+        release.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals(0L, driver.rowCount(), "a config fetched before Delete all data is not stored after it")
+    }
+
+    @Test
     fun a_refresh_that_starts_after_delete_all_data_stores_the_config() = runTest {
         // The positive control: the fence drops only writes requested before an erase, never all of them.
         val driver = inMemoryDriver()
