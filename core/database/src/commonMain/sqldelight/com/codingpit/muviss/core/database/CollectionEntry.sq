@@ -79,13 +79,24 @@ WHERE mediaId = :mediaId;
 -- all N queries on every tick and rebuilt all N subscriptions on every
 -- snapshot refresh. The count is joined in, never stored: status is derived
 -- from it by WatchStatusCalculator (ADR 0005).
+-- Specials (#938, ADR 0037) are read here, never stored: `specialsSeen` is the ticked specials that are also in the
+-- cached aired catalog (so a tick cannot count as seen while its episode is absent from the cache: the empty-cache
+-- upgrade), `specialsAired` is the cached aired specials, and `countSpecials` is the per-device setting. The raw
+-- counts are returned whatever the setting says, and `SpecialsCounting` decides what they add up to, so this query
+-- and Watch Next cannot disagree. `:today` is the day an episode counts as aired.
 selectAllWithSeen:
-SELECT c.*, COALESCE(p.seenCount, 0) AS seenCount
+SELECT c.*,
+    COALESCE(p.seenCount, 0) AS seenCount,
+    (SELECT COUNT(*) FROM episodeProgress sp
+        WHERE sp.mediaId = c.mediaId AND sp.seen = 1 AND sp.seasonNumber = 0 AND sp.episodeNumber > 0
+          AND sp.episodeId IN (SELECT e.episodeId FROM episode e WHERE e.mediaId = c.mediaId AND e.seasonNumber = 0 AND e.airDateEpochDay <= :today)) AS specialsSeen,
+    (SELECT COUNT(*) FROM episode e WHERE e.mediaId = c.mediaId AND e.seasonNumber = 0 AND e.airDateEpochDay <= :today) AS specialsAired,
+    COALESCE((SELECT a.countSpecialsTowardProgress FROM appSettings a WHERE a.id = 0), 0) AS countSpecials
 FROM collectionEntry c
 LEFT JOIN (
     SELECT mediaId, COUNT(*) AS seenCount
     FROM episodeProgress
-    WHERE seen = 1
+    WHERE seen = 1 AND (seasonNumber <> 0 OR episodeNumber = 0)
     GROUP BY mediaId
 ) p ON p.mediaId = c.mediaId
 WHERE c.deleted = 0
@@ -94,7 +105,13 @@ ORDER BY c.addedAtEpochMs DESC;
 -- One entry and its seen count, for the detail screen's membership. Deleted
 -- rows are returned (the caller hides them) so the shape matches selectById.
 selectByIdWithSeen:
-SELECT c.*, (SELECT COUNT(*) FROM episodeProgress p WHERE p.mediaId = c.mediaId AND p.seen = 1) AS seenCount
+SELECT c.*,
+    (SELECT COUNT(*) FROM episodeProgress p WHERE p.mediaId = c.mediaId AND p.seen = 1 AND (p.seasonNumber <> 0 OR p.episodeNumber = 0)) AS seenCount,
+    (SELECT COUNT(*) FROM episodeProgress sp
+        WHERE sp.mediaId = c.mediaId AND sp.seen = 1 AND sp.seasonNumber = 0 AND sp.episodeNumber > 0
+          AND sp.episodeId IN (SELECT e.episodeId FROM episode e WHERE e.mediaId = c.mediaId AND e.seasonNumber = 0 AND e.airDateEpochDay <= :today)) AS specialsSeen,
+    (SELECT COUNT(*) FROM episode e WHERE e.mediaId = c.mediaId AND e.seasonNumber = 0 AND e.airDateEpochDay <= :today) AS specialsAired,
+    COALESCE((SELECT a.countSpecialsTowardProgress FROM appSettings a WHERE a.id = 0), 0) AS countSpecials
 FROM collectionEntry c
 WHERE c.mediaId = :mediaId;
 
@@ -173,8 +190,10 @@ WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
 
 -- How many episodes of a title the user has ticked. The insert path floors its counts at this
 -- (see `SqlDelightCollectionRepository.upsertSnapshot`), the same floor `updateSnapshot` applies.
+-- Regular seasons only: the snapshot's counts never include specials (ADR 0037, #938). Season 0
+-- ticks are counted, if at all, at read time by the setting (`selectAllWithSeen`).
 seenCountFor:
-SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1;
+SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1 AND (seasonNumber <> 0 OR episodeNumber = 0);
 
 -- The snapshot half of a refresh (EPIC 39, ADR 0020): what TMDB says about a
 -- title, and nothing the user said. It touches neither `updatedAtEpochMs` nor
@@ -182,8 +201,8 @@ SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1;
 -- updates a live row: a tombstone must not be revived by a device that merely
 -- looked at the title (adding a title back goes through `upsert`).
 --
--- `airedEpisodes` and `totalEpisodes` are floored at the number of episodes
--- already ticked. `WatchProgress` requires `seen <= aired` and throws; ticks
+-- `airedEpisodes` and `totalEpisodes` are floored at the number of regular episodes
+-- already ticked (Regular seasons only, #938: a special tick never moves the snapshot). `WatchProgress` requires `seen <= aired` and throws; ticks
 -- can outrun a snapshot when another device ticked an episode this device's
 -- provider data has not yet caught up to.
 updateSnapshot:
@@ -192,8 +211,8 @@ SET title = :title,
     posterUrl = :posterUrl,
     releaseYear = :releaseYear,
     productionStatus = :productionStatus,
-    totalEpisodes = MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
-    airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
+    totalEpisodes = MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0))),
+    airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0))),
     genres = :genres,
     runtimeMinutes = :runtimeMinutes
 WHERE mediaId = :mediaId AND deleted = 0;
@@ -223,12 +242,15 @@ WHERE mediaId = :mediaId;
 -- aired, and `WatchProgress`'s `require(seen <= aired)` throws when the Library
 -- next derives that title's status. Raises the snapshot to what the ticks
 -- already prove, without dirtying the row: the count is derived, not an edit.
+-- Regular seasons only (#938): a pulled special tick must not raise the snapshot, because the
+-- snapshot never holds specials. The specials count is read-time (`selectAllWithSeen`), so a
+-- special tick needs no reconciliation and cannot leave seen above aired.
 raiseAiredToSeen:
 UPDATE collectionEntry
-SET airedEpisodes = (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1),
-    totalEpisodes = MAX(totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
+SET airedEpisodes = (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0)),
+    totalEpisodes = MAX(totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0)))
 WHERE mediaId IN :mediaIds
-  AND airedEpisodes < (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1);
+  AND airedEpisodes < (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0));
 
 -- Every row goes back on the change-log: the first sync for an account, and
 -- "resync everything" (EPIC 39, ADR 0020).

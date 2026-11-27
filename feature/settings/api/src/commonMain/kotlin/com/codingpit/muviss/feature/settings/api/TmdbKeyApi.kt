@@ -17,6 +17,9 @@ enum class SaveTmdbKeyResult {
 
     /** Offline or TMDB failing: it could not be checked, so it was not saved. */
     COULD_NOT_CHECK,
+
+    /** Accepted by TMDB, but Delete all data ran during the check, so it was not kept. Not an error: nothing to show. */
+    ERASED,
 }
 
 /**

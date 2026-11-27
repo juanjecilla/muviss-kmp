@@ -204,7 +204,8 @@ class SqlDelightBackupRestorer(
     /**
      * Per-row last-write-wins on the item's stamp, like every other row here. A
      * restored item is written dirty so the next sync carries it to the account, and
-     * a local tombstone newer than the file keeps the item removed.
+     * a local tombstone newer than the file keeps the item removed, and a tombstone
+     * in the file removes an older live item here (#1070).
      */
     private suspend fun restoreTasteProfileItem(row: TasteProfileItemExport): Boolean {
         val local = database.tasteProfileQueries.selectById(row.id).awaitAsOneOrNull()
@@ -216,7 +217,7 @@ class SqlDelightBackupRestorer(
             label = row.label,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }
