@@ -3,14 +3,10 @@ package com.codingpit.muviss.feature.progress.domain
 import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 private class FakeEpisodeCatalogSource : EpisodeCatalogSource {
     val fetchCount = mutableMapOf<MediaId, Int>()
@@ -30,26 +26,26 @@ class EpisodeCatalogCacheTest {
     private val show2 = MediaId.tmdbTv("2")
 
     @Test
-    fun a_fetch_in_flight_during_delete_all_data_stores_nothing() = runTest {
-        val fence = DataEraseFence()
-        val answer = CompletableDeferred<Unit>()
-        val store = InMemoryEpisodeCatalogStore()
-        val source = object : EpisodeCatalogSource {
-            override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
-                answer.await()
-                return Result.success(listOf(Season(1, "Season 1", emptyList())))
+    fun a_fetch_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
+        // One title per load, so each load is one point: erase during each title's fetch in turn.
+        val shows = listOf(show1, show2)
+        for (erasedDuring in shows) {
+            val fence = DataEraseFence()
+            val store = InMemoryEpisodeCatalogStore()
+            val source = object : EpisodeCatalogSource {
+                override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
+                    if (mediaId == erasedDuring) fence.erase {}
+                    return Result.success(listOf(Season(1, "Season 1", emptyList())))
+                }
             }
+            val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, fence)
+
+            for (show in shows) cache.loadMissing(listOf(show))
+
+            val kept = shows.filter { it != erasedDuring }.toSet()
+            assertEquals(kept, cache.catalogs.value.keys, "an episode list requested before Delete all data is not shown after it (erase during $erasedDuring)")
+            assertEquals(kept, store.load(shows).keys, "nor stored, where it would re-create the deleted show's rows")
         }
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, fence)
-
-        val loading = async { cache.loadMissing(listOf(show1)) }
-        runCurrent()
-        fence.erase {}
-        answer.complete(Unit)
-        loading.await()
-
-        assertNull(cache.catalogs.value[show1], "an episode list requested before Delete all data is not shown after it")
-        assertTrue(store.load(listOf(show1)).isEmpty(), "nor stored, where it would re-create the deleted show's rows")
     }
 
     @Test

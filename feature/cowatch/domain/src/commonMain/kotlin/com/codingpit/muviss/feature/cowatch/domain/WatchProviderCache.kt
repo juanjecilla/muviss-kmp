@@ -90,10 +90,9 @@ class WatchProviderRefresher(
             val ids = if (fresh) {
                 existing.flatrateProviderIds
             } else {
-                val requestedAt = erasures.request()
-                val fetched = source.fetchFlatrateIds(mediaId, region).getOrNull()
-                if (fetched != null) erasures.write(requestedAt) { cache.put(mediaId, region, fetched) }
-                fetched ?: existing?.flatrateProviderIds.orEmpty()
+                val fetched = erasures.guardedFetch { source.fetchFlatrateIds(mediaId, region).getOrNull() }
+                fetched.value?.let { ids -> fetched.write { cache.put(mediaId, region, ids) } }
+                fetched.value ?: existing?.flatrateProviderIds.orEmpty()
             }
             mediaId to ids
         }.toMap()

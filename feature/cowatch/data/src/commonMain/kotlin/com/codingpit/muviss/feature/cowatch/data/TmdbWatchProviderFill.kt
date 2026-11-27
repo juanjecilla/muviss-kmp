@@ -26,11 +26,11 @@ internal class TmdbWatchProviderFill(
 
     override suspend fun fill(mediaIds: List<MediaId>, region: String) {
         for (mediaId in mediaIds) {
-            val requestedAt = erasures.request()
-            val result = source.fetchFlatrateIds(mediaId, region)
+            val fetched = erasures.guardedFetch { source.fetchFlatrateIds(mediaId, region) }
+            val result = fetched.value
             val failure = result.exceptionOrNull()
             if (failure == null) {
-                runCatching { erasures.write(requestedAt) { cache.put(mediaId, region, result.getOrThrow()) } }.onFailure { error ->
+                runCatching { fetched.write { cache.put(mediaId, region, result.getOrThrow()) } }.onFailure { error ->
                     if (error is CancellationException) throw error
                     // A storage failure ends the batch like a failed fetch; the cache keeps what it already has.
                     CrashReporter.recordException(error)

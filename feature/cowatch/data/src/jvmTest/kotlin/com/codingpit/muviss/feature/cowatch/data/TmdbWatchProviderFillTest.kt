@@ -8,9 +8,6 @@ import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MetadataError
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,25 +45,29 @@ class TmdbWatchProviderFillTest {
     private val c = MediaId.tmdbMovie("3")
 
     @Test
-    fun a_fill_in_flight_during_delete_all_data_stores_nothing() = runTest {
-        val fence = DataEraseFence()
-        val cache = RecordingCache()
-        val answer = CompletableDeferred<Unit>()
-        val source = object : WatchProviderSource {
-            override val region: String = "US"
-            override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
-                answer.await()
-                return Result.success(setOf("8"))
+    fun a_fill_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
+        // Every point of the batch: erase while each title's answer is in flight. Titles answered before it were
+        // written, titles asked after it are written, and only the one in flight is dropped.
+        val titles = listOf(a, b, c)
+        for (erasedDuring in titles) {
+            val fence = DataEraseFence()
+            val cache = RecordingCache()
+            val source = object : WatchProviderSource {
+                override val region: String = "US"
+                override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
+                    if (mediaId == erasedDuring) fence.erase {}
+                    return Result.success(setOf("8"))
+                }
             }
+
+            TmdbWatchProviderFill(cache, source, notFound, fence).fill(titles, region = "US")
+
+            assertEquals(
+                titles.filter { it != erasedDuring }.map { Triple(it, "US", setOf("8")) },
+                cache.puts,
+                "a provider answer requested before Delete all data is not cached after it (erase during $erasedDuring)",
+            )
         }
-
-        val filling = async { TmdbWatchProviderFill(cache, source, notFound, fence).fill(listOf(a), region = "US") }
-        runCurrent()
-        fence.erase {}
-        answer.complete(Unit)
-        filling.await()
-
-        assertTrue(cache.puts.isEmpty(), "a provider answer requested before Delete all data is not cached after it")
     }
 
     @Test
