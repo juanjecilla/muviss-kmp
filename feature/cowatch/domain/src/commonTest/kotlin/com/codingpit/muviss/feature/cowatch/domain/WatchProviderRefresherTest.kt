@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.cowatch.domain
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.test.runTest
@@ -37,10 +38,37 @@ class WatchProviderRefresherTest {
     private val id = MediaId.tmdbMovie("1")
 
     @Test
+    fun a_fetch_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
+        // Sequential (concurrency 1), so the titles before the erase are written, the one in flight is dropped and
+        // the ones after it are asked for after the erase and written.
+        val titles = listOf(MediaId.tmdbMovie("1"), MediaId.tmdbMovie("2"), MediaId.tmdbMovie("3"))
+        for (erasedDuring in titles) {
+            val fence = DataEraseFence()
+            val cache = FakeCache()
+            val source = object : WatchProviderSource {
+                override val region: String = "US"
+                override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
+                    if (mediaId == erasedDuring) fence.erase {}
+                    return Result.success(setOf("8"))
+                }
+            }
+            val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), concurrency = 1, erasures = fence)
+
+            refresher.refresh(titles.toSet())
+
+            assertEquals(
+                titles.filter { it != erasedDuring }.toSet(),
+                cache.stored.keys,
+                "a provider answer requested before Delete all data is not cached after it (erase during $erasedDuring)",
+            )
+        }
+    }
+
+    @Test
     fun a_never_cached_title_is_fetched_and_stored() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.success(setOf("8")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -54,7 +82,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource()
         val clock = FakeClock(1_000L) // well inside the default 24h TTL
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -68,7 +96,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.success(setOf("9")) }
         val clock = FakeClock(oneDayMs + 1)
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -83,7 +111,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource(region = "GB").apply { nextResult = Result.success(setOf("30")) }
         val clock = FakeClock(1L) // far inside the TTL
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -97,7 +125,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
         val clock = FakeClock(oneDayMs + 1)
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -108,7 +136,7 @@ class WatchProviderRefresherTest {
     fun a_failed_fetch_with_nothing_cached_yields_an_empty_set_not_an_error() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -119,7 +147,7 @@ class WatchProviderRefresherTest {
     fun an_empty_request_touches_neither_the_cache_nor_the_source() = runTest {
         val cache = FakeCache()
         val source = FakeSource()
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         assertTrue(refresher.refresh(emptySet()).isEmpty())
         assertEquals(0, cache.getCallCount)

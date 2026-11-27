@@ -162,6 +162,13 @@ interface FeatureFlags {
     val completionPromptEnabled: Flow<Boolean>
 
     /**
+     * Whether season 0 (Specials) counts toward a title's progress (#938, ADR 0037). Off by default. Per device and never
+     * synced: it changes how this device reads a title's progress, not what the library holds. Read at read time only, so
+     * the snapshot never carries specials and a switch takes effect on the next read.
+     */
+    val countSpecialsTowardProgress: Flow<Boolean>
+
+    /**
      * Whether the app *offers* to take an Own TMDB Key (EPIC 46). Served by
      * Remote Config, so there is no setter, and it governs the entry UI only: a
      * stored key keeps being used when this turns off (ADR 0027).
@@ -183,6 +190,8 @@ interface FeatureFlags {
     suspend fun setTriageSnoozePlacement(placement: SnoozePlacement)
 
     suspend fun setCompletionPromptEnabled(enabled: Boolean)
+
+    suspend fun setCountSpecialsTowardProgress(enabled: Boolean)
 }
 
 /** [FeatureFlags.tickAnimations] narrowed by the master [FeatureFlags.animationsEnabled]: the value readers act on. */

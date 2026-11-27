@@ -121,6 +121,10 @@
     <string name="movie_marked_watched">Marcada como vista</string>
     <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
+    <plurals name="specials_unseen">
+        <item quantity="one">%1$d sin ver</item>
+        <item quantity="other">%1$d sin ver</item>
+    </plurals>
     <string name="cast">Reparto</string>
     <string name="credits_title">Reparto y equipo</string>
     <string name="directed_by">Dirigida por %1$s</string>

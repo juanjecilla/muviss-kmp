@@ -75,9 +75,17 @@ object EpisodeOrdering {
         }
         .map { it.id }
 
-    /** Every episode at or before [target] in show order, inclusive of [target] itself. */
+    /**
+     * Every episode at or before [target] in show order, inclusive of [target] itself. Walks regular seasons
+     * for a regular target and the specials for a special one (#938): a special sorts before season 1, so
+     * walking all seasons would tick every special ahead of any regular episode, undated ones included.
+     */
     fun upToInclusive(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
-        val ordered = flatten(seasons)
+        val ordered = if (target.seasonNumber == SPECIALS_SEASON) {
+            flatten(seasons.filter { it.number == SPECIALS_SEASON })
+        } else {
+            regular(seasons)
+        }
         val targetIndex = ordered.indexOfFirst { it.id == target }
         if (targetIndex < 0) return listOf(target)
         return ordered.subList(0, targetIndex + 1).map { it.id }

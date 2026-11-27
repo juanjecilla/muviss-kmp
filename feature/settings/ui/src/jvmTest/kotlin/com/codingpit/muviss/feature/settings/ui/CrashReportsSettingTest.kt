@@ -231,6 +231,8 @@ internal object NoFlags : FeatureFlags {
     override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val completionPromptEnabled = MutableStateFlow(true)
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
+    override val countSpecialsTowardProgress = MutableStateFlow(false)
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) = Unit
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
     override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
