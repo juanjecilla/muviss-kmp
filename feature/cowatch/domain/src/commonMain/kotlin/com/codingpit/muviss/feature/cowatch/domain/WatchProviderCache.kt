@@ -84,13 +84,15 @@ class WatchProviderRefresher(
         val region = source.region
         val now = clock.nowEpochMs()
         val cached = cache.get(mediaIds)
+        // Taken once for the batch, before its first fetch: a title asked after Delete all data is dropped with the rest (#1090).
+        val batch = erasures.batch()
         return mediaIds.toList().mapBounded(concurrency) { mediaId ->
             val existing = cached[mediaId]
             val fresh = existing != null && existing.region == region && now - existing.fetchedAtEpochMs < maxAgeMs
             val ids = if (fresh) {
                 existing.flatrateProviderIds
             } else {
-                val fetched = erasures.guardedFetch { source.fetchFlatrateIds(mediaId, region).getOrNull() }
+                val fetched = batch.guardedFetch { source.fetchFlatrateIds(mediaId, region).getOrNull() }
                 fetched.value?.let { ids -> fetched.write { cache.put(mediaId, region, ids) } }
                 fetched.value ?: existing?.flatrateProviderIds.orEmpty()
             }

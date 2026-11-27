@@ -13,10 +13,12 @@ import com.configcat.log.LogLevel
 import com.configcat.manualPoll
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
 
 /**
@@ -74,10 +76,17 @@ internal class ConfigCatRemoteConfig(
             val now = clock.nowEpochMs()
             if (last != null && now - last in 0 until STALE_AFTER_MS) return
             // Taken before the SDK asks TMDB's CDN, and it is what the SDK's write below is checked against.
-            fencedCache.requestedAt = erasures.request()
-            runCatchingNonCancellation { client.forceRefresh() }
-            // A failed fetch still counts: retrying on every foreground would hammer the CDN offline.
-            lastFetchEpochMs = now
+            val requestedAt = erasures.request()
+            fencedCache.requestedAt = requestedAt
+            // Not cancellable: the SDK's fetch runs in its own coroutine and writes the cache there, so a
+            // cancelled caller would leave that write to land later, checked against a count armed by a
+            // refresh that started after an erase (#1080). Waiting for forceRefresh means the write has
+            // finished, or been abandoned, before this returns; the SDK's own request timeouts bound it.
+            withContext(NonCancellable) { runCatchingNonCancellation { client.forceRefresh() } }
+            // A failed fetch still counts: retrying on every foreground would hammer the CDN offline. But a refresh an erase
+            // overlapped had its write fenced (the count moved), so it did not complete: the next foreground refresh fetches
+            // again instead of reading defaults for the rest of the hour (#1091).
+            lastFetchEpochMs = if (erasures.request() == requestedAt) now else null
             evaluate()
         }
     }
@@ -117,11 +126,9 @@ internal class ConfigCatRemoteConfig(
      * The cache the SDK writes its fetched config through. The SDK does that write itself, inside the awaited
      * `forceRefresh` (its `fetchConfig` calls `writeCache` before the answer is returned), so nothing on our side
      * is around it to take the fence: this wrapper does. [requestedAt] is set by [refreshIfStale] under its lock,
-     * before `forceRefresh`, and starts at the count at construction, so a write can never be unfenced.
-     *
-     * Known gap, tracked in #1080 and not closed here: the SDK runs each fetch in its own coroutine. If
-     * [refreshIfStale] is cancelled mid-fetch, that write still lands later, checked against whatever count is
-     * armed then.
+     * before `forceRefresh`, and starts at the count at construction, so a write can never be unfenced. Because
+     * [refreshIfStale] does not return until `forceRefresh` has, no write outlives the [requestedAt] it was
+     * checked against (#1080).
      */
     private class FencedConfigCache(
         private val delegate: ConfigCache,
