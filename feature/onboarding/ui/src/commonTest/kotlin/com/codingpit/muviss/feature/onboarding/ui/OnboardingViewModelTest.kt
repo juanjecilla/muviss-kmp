@@ -280,6 +280,18 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun a_key_erased_mid_check_shows_no_error_and_is_not_reported_as_saved() = runTest {
+        val vm = viewModel()
+        key.result = SaveTmdbKeyResult.ERASED
+        var done = false
+        vm.saveKey("a".repeat(32)) { done = true }
+        assertNull(vm.state.value.keyProblem, "an erase is not a failed check, so there is no error to show")
+        assertFalse(done, "a key that was not kept is not reported as saved")
+        assertFalse(vm.state.value.keyChecking, "the dialog must be released after an erase")
+        assertEquals(TmdbDataSource.MUVISS, vm.state.value.keySource, "an erased key must not become the one in use")
+    }
+
+    @Test
     fun a_store_failure_releases_the_key_dialog_with_a_problem() = runTest {
         val vm = viewModel()
         key.failure = IllegalStateException("keychain unavailable")

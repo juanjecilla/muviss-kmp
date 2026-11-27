@@ -32,7 +32,8 @@ cat > "$BIN/adb" <<'EOF'
 #!/bin/bash
 echo "adb $*" >> "$CALLS"
 case "$*" in
-  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n'
+    [ -n "${FAKE_TWO_DEVICES:-}" ] && printf 'emulator-5556\tdevice\n' ;;
   *"exec-out run-as"*"databases/muviss.db")
     [ -n "${FAKE_DEVICE_DB:-}" ] && cat "$FAKE_DEVICE_DB" || exit 1 ;;
   *) exit 1 ;;
@@ -78,7 +79,9 @@ elif [[ "$args" == *"-X DELETE"* ]]; then route=rest-delete; code=${CURL_DELETE:
 elif [[ "$args" == *"-X POST"* && "$args" == *Authorization* ]]; then route=rls-probe-write; code=${CURL_PROBE_WRITE:-${CURL_WRITE:-201}}; body=''
 elif [[ "$args" == *"-X POST"* ]]; then route=rls-anon-write; code=${CURL_ANON_WRITE:-401}; body='{"code":"42501","message":"new row violates row-level security policy"}'
 elif [[ "$args" == *"rls-probe"* && "$args" == *Authorization* ]]; then route=rls-probe-read; code=${CURL_PROBE_READ_CODE:-200}; body=${CURL_PROBE_READ-'[{"id":"rls-probe"}]'}
+elif [[ "$args" == *"select=title,rating"* ]]; then route=rest-row; code=${CURL_ROW_CODE:-200}; body=${CURL_ROW:-'[{"title":"seed","rating":8}]'}
 elif [[ "$args" == *"select=*"* && "$args" != *Authorization* ]]; then route=rls-anon-read; code=${CURL_ANON_READ_CODE:-200}; body=${CURL_ANON_READ-'[]'}
+elif [[ "$args" == *"select=*"* ]]; then route=rest-read; code=${CURL_READ_CODE:-200}; body=${CURL_READ:-[]}
 elif [[ "$args" == *"episode_progress?select"* ]]; then route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]}
 elif [[ "$args" == *"/rest/v1/"* ]]; then route=rest-write; code=${CURL_WRITE:-201}; body=''
 else route=other; code=200; body=''
@@ -312,6 +315,26 @@ RLS_PEER_USER_ID=peer-1 FAKE_DEVICE_DB="$DEVICE_DB" run "" verify-rls.sh
 if [ "$RC" -eq 0 ] && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 10 ]; then
   pass "hosted with a peer: all ten tables are verified"
 else fail "hosted with peer: rc=$RC out=$OUT"; fi
+
+echo "adb with two devices and no MUVISS_DEVICE stops the script"
+MUVISS_DEVICE= FAKE_TWO_DEVICES=1 lib "adb_ shell true; echo after-adb"
+if [ "$RC" -ne 0 ] && ! grep -q "after-adb" <<<"$OUT" && ! grep -q "adb shell" "$CALLS"; then
+  pass "the ambiguity exits the script before any adb call"
+else fail "two devices: rc=$RC out=$OUT calls=$(cat "$CALLS")"; fi
+
+echo "verify-null-clearing checks the seed before it trusts the rest"
+CURL_ROW='[{"title":"old-title","rating":null}]' run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that did not land (stale probe row) fails and says so"
+else fail "stale probe row: rc=$RC out=$OUT"; fi
+CURL_ROW='[{"title":"seed","rating":8}]' run local verify-null-clearing.sh
+if ! grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that landed prints no seed warning"
+else fail "landed seed warned: out=$OUT"; fi
+CURL_ROW_CODE=500 run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "read-back failed" <<<"$OUT" && ! grep -q "did not land" <<<"$OUT" && ! grep -q "newer timestamp" <<<"$OUT"; then
+  pass "a failed read-back is reported as a read failure, not as a newer row"
+else fail "read-back failure: rc=$RC out=$OUT"; fi
 
 echo "every sync script parses"
 

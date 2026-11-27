@@ -46,9 +46,9 @@ val coWatchDataModule: Module = module {
     single<WatchProviderLookup> { get<SqlDelightWatchProviderCache>() }
     // #762: the same source and cache, for Next Pick's bounded fill of titles it has never seen.
     single { NotFoundTitles(get()) }
-    single<WatchProviderFill> { TmdbWatchProviderFill(get(), get(), get()) }
+    single<WatchProviderFill> { TmdbWatchProviderFill(get(), get(), get(), get()) }
     single<WatchProviderSource> { TmdbWatchProviderSource(get(), get(), get()) }
-    single { WatchProviderRefresher(get(), get(), get()) }
+    single { WatchProviderRefresher(get(), get(), get(), erasures = get()) }
     factory { PublishWatchPoolUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }
     factory { ObserveShortlistUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }
     factory { ObserveCompanionsUseCase(get()) }

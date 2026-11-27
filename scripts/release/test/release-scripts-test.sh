@@ -581,6 +581,7 @@ case "$*" in
   "issue list"*) printf '%s' "${BM_ISSUE:-}" ;;
   "issue view"*) printf '%s' "${BM_COMMENTS:-}" ;;
   "api "*) printf '%s' "${BM_PRS:-}" ;;
+  "pr list"*) printf '%s' "${BM_OPEN:-}" ;;
 esac
 exit 0
 FAKEGH
@@ -618,6 +619,35 @@ bm_two='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T
 : >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_two" BM_FAIL="Back-merge #887" NOW=2026-11-16T23:00:00Z bmrun stale 2>/dev/null; st=$?
 expect_eq "a failed notice does not stop the next stale PR" "$(grep -c 'Back-merge #888' "$BM_GH_LOG")" "1"
 expect_eq "and the stale run exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+
+# pr-at SHA: the open back-merge PR whose head is SHA (#1030). A push to main
+# completes CI on the release merge commit, and that run names only the commit.
+# One object per line, as the gh api --jq in pr_at() prints them.
+pr_open='{"number":887,"headRefName":"back-merge/v1.4.0","headRefOid":"aaa111","isCrossRepository":false}
+{"number":900,"headRefName":"feat/x","headRefOid":"bbb222","isCrossRepository":false}'
+: >"$BM_GH_LOG"; out="$(BM_PRS="$pr_open" bmrun pr-at aaa111)"; st=$?
+expect_eq "pr-at names the back-merge PR at that head" "$out" "887 back-merge/v1.4.0"
+expect_eq "and exits 0" "$st" "0"
+expect_eq "and lists open PRs into develop through gh api, paginated" "$(grep -c -- '^gh api --paginate repos/{owner}/{repo}/pulls?base=develop' "$BM_GH_LOG")" "1"
+out="$(BM_PRS="$pr_open" bmrun pr-at ccc333)"; st=$?
+expect_eq "no open back-merge at that head prints nothing" "$out" ""
+expect_eq "and exits 0" "$st" "0"
+out="$(BM_PRS="$pr_open" bmrun pr-at bbb222)"
+expect_eq "a feature branch at the same head is not a back-merge" "$out" ""
+out="$(BM_PRS="" bmrun pr-at aaa111)"; st=$?
+expect_eq "no PRs into develop at all prints nothing and exits 0" "$out$st" "0"
+out="$(BM_FAIL="pulls" bmrun pr-at aaa111 2>/dev/null)"; st=$?
+expect_eq "a PR list that cannot be read exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+expect_eq "and prints nothing for it" "$out" ""
+# A fork branch at the same head comes first in the listing: the release's own
+# back-merge must still be named, not hidden behind the fork.
+pr_fork_first='{"number":950,"headRefName":"back-merge/v9.9.9","headRefOid":"aaa111","isCrossRepository":true}
+{"number":887,"headRefName":"back-merge/v1.4.0","headRefOid":"aaa111","isCrossRepository":false}'
+out="$(BM_PRS="$pr_fork_first" bmrun pr-at aaa111)"
+expect_eq "a fork PR at the same head does not hide the back-merge" "$out" "887 back-merge/v1.4.0"
+pr_fork_only='{"number":950,"headRefName":"back-merge/v9.9.9","headRefOid":"aaa111","isCrossRepository":true}'
+out="$(BM_PRS="$pr_fork_only" bmrun pr-at aaa111)"
+expect_eq "a fork back-merge alone is not named" "$out" ""
 
 echo "rc-is-branch-head.sh"
 # release.yml's tag job: did the release branch move after its last RC? (#891)
