@@ -74,7 +74,7 @@ case "$args" in
     route=rest-count; code=${CURL_COUNT:-200}; body=''
     [ -n "$headers" ] && printf 'Content-Range: 0-0/%s\r\n' "${CURL_COUNT_TOTAL:-7}" > "$headers" ;;
   *"-X DELETE"*) route=rest-delete; code=${CURL_DELETE:-204}; body='' ;;
-  *"select=title,rating"*) route=rest-row; code=200; body=${CURL_ROW:-'[{"title":"seed","rating":8}]'} ;;
+  *"select=title,rating"*) route=rest-row; code=${CURL_ROW_CODE:-200}; body=${CURL_ROW:-'[{"title":"seed","rating":8}]'} ;;
   *"select=*"*) route=rest-read; code=${CURL_READ_CODE:-200}; body=${CURL_READ:-[]} ;;
   *"episode_progress?select"*) route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]} ;;
   *"/rest/v1/"*) route=rest-write; code=${CURL_WRITE:-201}; body='' ;;
@@ -267,7 +267,7 @@ if [ "$RC" -eq 0 ] && grep -q "^  none$" <<<"$OUT" && ! grep -q "_lastFullPullAt
 else fail "reserved row only: rc=$RC out=$OUT"; fi
 
 echo "adb with two devices and no MUVISS_DEVICE stops the script"
-FAKE_TWO_DEVICES=1 lib "adb_ shell true; echo after-adb"
+MUVISS_DEVICE= FAKE_TWO_DEVICES=1 lib "adb_ shell true; echo after-adb"
 if [ "$RC" -ne 0 ] && ! grep -q "after-adb" <<<"$OUT" && ! grep -q "adb shell" "$CALLS"; then
   pass "the ambiguity exits the script before any adb call"
 else fail "two devices: rc=$RC out=$OUT calls=$(cat "$CALLS")"; fi
@@ -281,6 +281,10 @@ CURL_ROW='[{"title":"seed","rating":8}]' run local verify-null-clearing.sh
 if ! grep -q "the seed did not land" <<<"$OUT"; then
   pass "a seed that landed prints no seed warning"
 else fail "landed seed warned: out=$OUT"; fi
+CURL_ROW_CODE=500 run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "read-back failed" <<<"$OUT" && ! grep -q "did not land" <<<"$OUT" && ! grep -q "newer timestamp" <<<"$OUT"; then
+  pass "a failed read-back is reported as a read failure, not as a newer row"
+else fail "read-back failure: rc=$RC out=$OUT"; fi
 
 echo "every sync script parses"
 
