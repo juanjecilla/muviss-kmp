@@ -34,9 +34,20 @@ class DataEraseFence {
      * has run since the count was taken. Every TMDB writer of local data is this shape (#1056); this is the one
      * place the count and the check are paired, so a call site cannot take the count after its fetch.
      */
-    suspend fun <T> guardedFetch(fetch: suspend () -> T): Guarded<T> {
-        val requestedAt = request()
-        return Guarded(fetch(), this, requestedAt)
+    suspend fun <T> guardedFetch(fetch: suspend () -> T): Guarded<T> = batch().guardedFetch(fetch)
+
+    /**
+     * Takes the request count once, for a whole batch of fetches, before the first of them is requested. Every
+     * result of the batch is written against that one count, so a title asked after Delete all data in the middle
+     * of the batch is dropped with the rest (#1090). A writer that takes a count per title defeats this: each title
+     * would pass its own check.
+     */
+    fun batch(): Batch = Batch(request())
+
+    /** The count a batch was requested under; see [batch]. */
+    inner class Batch internal constructor(private val requestedAt: Long) {
+        /** Runs [fetch] and pairs its result with the count [batch] took before any fetch of the batch started. */
+        suspend fun <T> guardedFetch(fetch: suspend () -> T): Guarded<T> = Guarded(fetch(), this@DataEraseFence, requestedAt)
     }
 
     /** A fetched value and the count it was requested under; see [guardedFetch]. */

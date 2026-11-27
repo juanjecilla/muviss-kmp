@@ -46,8 +46,8 @@ class TmdbWatchProviderFillTest {
 
     @Test
     fun a_fill_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
-        // Every point of the batch: erase while each title's answer is in flight. Titles answered before it were
-        // written, titles asked after it are written, and only the one in flight is dropped.
+        // Every point of the batch: erase while each title's answer is in flight. The batch takes its erase count once
+        // (#1090), so titles answered before the erase are written and the one in flight and every later title are not.
         val titles = listOf(a, b, c)
         for (erasedDuring in titles) {
             val fence = DataEraseFence()
@@ -63,9 +63,9 @@ class TmdbWatchProviderFillTest {
             TmdbWatchProviderFill(cache, source, notFound, fence).fill(titles, region = "US")
 
             assertEquals(
-                titles.filter { it != erasedDuring }.map { Triple(it, "US", setOf("8")) },
+                titles.takeWhile { it != erasedDuring }.map { Triple(it, "US", setOf("8")) },
                 cache.puts,
-                "a provider answer requested before Delete all data is not cached after it (erase during $erasedDuring)",
+                "a title asked in a batch that crossed Delete all data is not cached (erase during $erasedDuring)",
             )
         }
     }

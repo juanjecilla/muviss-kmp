@@ -25,8 +25,10 @@ internal class TmdbWatchProviderFill(
 ) : WatchProviderFill {
 
     override suspend fun fill(mediaIds: List<MediaId>, region: String) {
+        // Taken once for the batch, before its first request: a title asked after Delete all data is dropped with the rest (#1090).
+        val batch = erasures.batch()
         for (mediaId in mediaIds) {
-            val fetched = erasures.guardedFetch { source.fetchFlatrateIds(mediaId, region) }
+            val fetched = batch.guardedFetch { source.fetchFlatrateIds(mediaId, region) }
             val result = fetched.value
             val failure = result.exceptionOrNull()
             if (failure == null) {

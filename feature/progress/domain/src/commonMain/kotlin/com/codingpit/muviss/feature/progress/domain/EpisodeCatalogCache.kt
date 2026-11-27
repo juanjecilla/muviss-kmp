@@ -73,14 +73,17 @@ class EpisodeCatalogCache(
      * losing what is stored because the network was unavailable is strictly
      * worse than keeping it.
      */
-    private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> = mediaIds.mapBounded { id ->
-        // Taken before TMDB is asked: an answer requested before Delete all data stores nothing after it (#1056).
-        val fetched = erasures.guardedFetch { fetchEpisodeCatalog(id) }
-        fetched.value.onSuccess { seasons ->
-            fetched.write {
-                store.save(id, seasons)
-                _catalogs.update { it + (id to seasons) }
-            }
-        }.exceptionOrNull()
-    }.filterNotNull()
+    private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> {
+        // Taken once, before the first title is asked: every answer in this batch is written against it (#1056, #1090).
+        val batch = erasures.batch()
+        return mediaIds.mapBounded { id ->
+            val fetched = batch.guardedFetch { fetchEpisodeCatalog(id) }
+            fetched.value.onSuccess { seasons ->
+                fetched.write {
+                    store.save(id, seasons)
+                    _catalogs.update { it + (id to seasons) }
+                }
+            }.exceptionOrNull()
+        }.filterNotNull()
+    }
 }
