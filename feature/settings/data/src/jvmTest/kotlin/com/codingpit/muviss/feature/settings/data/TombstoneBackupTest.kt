@@ -175,6 +175,44 @@ class TombstoneBackupTest {
         assertFalse(other.collectionEntryQueries.selectById(MATRIX).awaitAsOneOrNull()!!.deleted)
     }
 
+    @Test
+    fun `a viewing removed at or after its tick stays removed when the seen-progress backfill runs`() = runTest {
+        // The backfill writes a play at the tick's stamp with `OR REPLACE`. A removal stamped at or after that tick
+        // is the winner, so the backfill must not bring the viewing back.
+        listOf(TICK_AT, TICK_AT + 1_000L).forEach { removedAt ->
+            val source = inMemoryDatabase()
+            seedProgress(source, updatedAt = TICK_AT)
+            seedPlay(source, updatedAt = TICK_AT)
+            source.episodePlayQueries.deleteById(updatedAtEpochMs = removedAt, id = PLAY_ID)
+            val backup = exporter(source).exportData()
+
+            val other = inMemoryDatabase()
+            seedProgress(other, updatedAt = TICK_AT)
+            restorer(other).restore(backup)
+
+            assertTrue(other.episodePlayQueries.selectById(PLAY_ID).awaitAsOneOrNull()!!.deleted, "removed at $removedAt")
+            assertTrue(other.episodePlayQueries.selectAll().awaitAsList().isEmpty(), "removed at $removedAt")
+        }
+    }
+
+    @Test
+    fun `a legacy backup with seen progress and no play history still backfills the viewing`() = runTest {
+        val source = inMemoryDatabase()
+        seedProgress(source, updatedAt = TICK_AT)
+        val backup = exporter(source).exportData()
+        assertTrue(export(source).plays.isEmpty())
+
+        val other = inMemoryDatabase()
+        seedProgress(other, updatedAt = TICK_AT)
+        restorer(other).restore(backup)
+
+        assertFalse(other.episodePlayQueries.selectById(PLAY_ID).awaitAsOneOrNull()!!.deleted)
+    }
+
+    private suspend fun seedProgress(database: MuvissDatabase, updatedAt: Long) {
+        database.episodeProgressQueries.upsert(EPISODE, SHOW, 1L, 1L, true, updatedAt, false)
+    }
+
     private suspend fun seedEntry(
         database: MuvissDatabase,
         mediaId: String = MATRIX,
@@ -225,7 +263,9 @@ class TombstoneBackupTest {
         const val MATRIX = "tmdb:movie:603"
         const val OTHER = "tmdb:movie:550"
         const val LIST_ID = "list-1"
+        const val SHOW = "tmdb:tv:1399"
         const val EPISODE = "tmdb:tv:1399/1/1"
-        const val PLAY_ID = "$EPISODE@1000"
+        const val TICK_AT = 1_000L
+        const val PLAY_ID = "$EPISODE@$TICK_AT"
     }
 }
