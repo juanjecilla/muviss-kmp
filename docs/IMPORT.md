@@ -142,7 +142,10 @@ snoozes, profile); a v1 file has no version and restores as 1.
 Restoring needs no network: every row merges by `updatedAtEpochMs`, last
 write wins, so anything changed on the device since the backup was made is
 kept, and restoring the same file twice changes nothing. A backup from a
-newer app version is refused. See `SqlDelightBackupRestorer`.
+newer app version is refused. A removal travels as a tombstone (#1074, #1070): a
+row removed on the exporting device is restored as removed here too, unless this
+device changed it more recently. A build from before tombstones restores such a row
+as live (see #1075). See `SqlDelightBackupRestorer`.
 
 ## Id mapping
 
