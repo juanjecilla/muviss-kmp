@@ -10,6 +10,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -294,6 +295,23 @@ class RecordDecisionUseCaseTest {
         assertNull(outcome, "a cancelled verdict must not return a Result, it must throw the cancellation (#1079)")
         assertEquals(emptyList(), h.collection.summaries.value)
         assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
+    fun a_caller_cancelled_during_the_rollback_after_a_failed_claim_still_ends_cancelled_not_failed() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        val gate = CompletableDeferred<Unit>()
+        h.collection.beforeRemove = { gate.await() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        gate.complete(Unit)
+        job.join()
+
+        assertNull(outcome, "a cancelled caller must end cancelled even when the failure was not a cancellation (#1079)")
+        assertEquals(emptyList(), h.collection.summaries.value, "the rollback still runs to completion under NonCancellable")
     }
 
     @Test

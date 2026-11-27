@@ -22,10 +22,10 @@ import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -141,12 +141,13 @@ class RecordDecisionUseCase(
     }
 
     /**
-     * [runCatching] for suspending work that must not swallow the caller's cancellation (#1079). When the caller's own
-     * coroutine has been cancelled (the person left the screen), the [CancellationException] is rethrown so the caller
-     * ends cancelled rather than running follow-up work on a dead scope. A cancellation that came from an inner source
-     * while the caller is still active is an ordinary failure: the retry UI must still see it.
+     * [runCatching] for suspending work that must not hand a cancelled caller a [Result] (#1079). After any failure the
+     * caller's coroutine is checked: if it has been cancelled (the person left the screen), the cancellation is thrown
+     * whatever the failure was, so the caller ends cancelled rather than running follow-up work on a dead scope. That
+     * covers a failure reported from a rollback under [NonCancellable]. While the caller is still active every failure
+     * is returned, including a [CancellationException] from an inner source, so the retry UI still sees it.
      */
-    private suspend inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure { if (it is CancellationException && !currentCoroutineContext().isActive) throw it }
+    private suspend inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure { currentCoroutineContext().ensureActive() }
 
     /**
      * The add and the claim write, as one unit (#1071). The claim is recorded once the add has landed and before the
