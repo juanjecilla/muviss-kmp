@@ -26,9 +26,10 @@ class EpisodeCatalogCacheTest {
     private val show2 = MediaId.tmdbTv("2")
 
     @Test
-    fun a_fetch_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
-        // One title per load, so each load is one point: erase during each title's fetch in turn.
-        val shows = listOf(show1, show2)
+    fun a_batch_fetched_across_delete_all_data_stores_nothing_after_it() = runTest {
+        // One batch of four, erased during each title's fetch in turn. The batch takes its erase count once, before
+        // its first request (#1090), so a title asked after the erase is dropped with the rest, not written.
+        val shows = (1..4).map { MediaId.tmdbTv("$it") }
         for (erasedDuring in shows) {
             val fence = DataEraseFence()
             val store = InMemoryEpisodeCatalogStore()
@@ -40,11 +41,11 @@ class EpisodeCatalogCacheTest {
             }
             val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, fence)
 
-            for (show in shows) cache.loadMissing(listOf(show))
+            cache.loadMissing(shows)
 
-            val kept = shows.filter { it != erasedDuring }.toSet()
-            assertEquals(kept, cache.catalogs.value.keys, "an episode list requested before Delete all data is not shown after it (erase during $erasedDuring)")
-            assertEquals(kept, store.load(shows).keys, "nor stored, where it would re-create the deleted show's rows")
+            val kept = shows.takeWhile { it != erasedDuring }.toSet()
+            assertEquals(kept, cache.catalogs.value.keys, "titles asked after Delete all data in the same batch are not shown (erase during $erasedDuring)")
+            assertEquals(kept, store.load(shows).keys, "nor stored, where they would re-create the deleted rows (erase during $erasedDuring)")
         }
     }
 
