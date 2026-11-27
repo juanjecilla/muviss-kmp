@@ -87,6 +87,8 @@ elif [[ "$args" == *"/rest/v1/"* ]]; then route=rest-write; code=${CURL_WRITE:-2
 else route=other; code=200; body=''
 fi
 echo "curl $route" >> "$CALLS"
+# A probe write whose response is lost: curl fails, though the row may have landed.
+[ "$route" = rls-probe-write ] && [ -n "${CURL_LOST_RESPONSE:-}" ] && exit 28
 case "$args" in
   *-w*) printf '%s\n%s' "$body" "$code" ;;
   *) printf '%s' "$body" ;;
@@ -299,12 +301,17 @@ if [ "$RC" -ne 0 ] && grep -q "could not write its probe row" <<<"$OUT" && [ "$(
   pass "a refused probe write is reported, and its table is not counted as verified"
 else fail "refused probe write: rc=$RC out=$OUT"; fi
 
+CURL_LOST_RESPONSE=1 run local verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "cleaned up: collection_entry" <<<"$OUT"; then
+  pass "a probe write whose response was lost is still cleaned up, and the run fails"
+else fail "lost probe response: rc=$RC out=$OUT"; fi
+
 CURL_TOKEN_BODY='{"error":"invalid_grant"}' CURL_TOKEN_CODE=400 run local verify-rls.sh
 if [ "$RC" -ne 0 ] && ! grep -q "^curl rls-" "$CALLS"; then
   pass "no signed-in session: verify-rls stops before any probe or read"
 else fail "no session: rc=$RC calls=$(cat "$CALLS")"; fi
 
-FAKE_DEVICE_DB="$DEVICE_DB" run "" verify-rls.sh
+RLS_PEER_USER_ID= FAKE_DEVICE_DB="$DEVICE_DB" run "" verify-rls.sh
 if [ "$RC" -ne 0 ] && grep -q "RLS_PEER_USER_ID" <<<"$OUT" \
     && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 8 ] \
     && ! grep -q "^curl auth-admin$" "$CALLS"; then

@@ -16,14 +16,27 @@
 #
 # Cowatch rows address a second account (recipient_id references auth.users, and
 # cannot be the author), so those two tables need a peer id: RLS_PEER_USER_ID,
-# or on the local stack a peer created through the local admin API.
+# or on the local stack a peer created through the local admin API. The peer must
+# have no cowatch link or pool entry with the device user yet: the probe inserts
+# one, so a pair that already has one is refused with 409 and reported as a failed
+# write. Nothing is upserted, and cleanup deletes only this run's marker rows.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
 
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+PENDING=""
+# Removes the probe rows of any table whose cleanup has not run yet, so an
+# interrupted run does not leave rows behind. A normal run has already cleaned
+# each table itself, and the marker keeps every delete scoped to this run.
+cleanup_pending() {
+  local t
+  for t in $PENDING; do
+    probe_cleanup "$REST/$t" "$(probe_column "$t")=eq.$MARK" || true
+  done
+}
+trap 'cleanup_pending; rm -rf "$WORK"' EXIT
 
 DB=$(pull_database "$WORK") || exit 1
 TOKEN=$(access_token "$DB")
@@ -87,12 +100,21 @@ peer_user_id() {
 PEER=""
 if ! PEER=$(peer_user_id); then PEER=""; fi
 
+# Tables whose probe row may exist on the server and has not been cleaned up yet.
+forget_pending() {
+  local keep="" x
+  for x in $PENDING; do [ "$x" = "$1" ] || keep="$keep $x"; done
+  PENDING=$keep
+}
+
 echo "=== per table: anon read (expect: []), owner read (expect: its probe row) ==="
 for t in $TABLES; do
   col=$(probe_column "$t")
   filter="$col=eq.$MARK"
   wrote=0
   body=$(probe_row "$t" "$PEER")
+  # Registered before the POST: a lost response may still have committed the row.
+  [ -n "$body" ] && PENDING="$PENDING $t"
   if [ -z "$body" ]; then
     printf '%-18s <-- no probe row: cowatch tables need RLS_PEER_USER_ID (another account id), so this table is not verified\n' "$t"
     fail=1
@@ -123,7 +145,13 @@ for t in $TABLES; do
     else
       printf '%-18s <-- the owner read failed (HTTP %s), so this table is not verified\n' "$t" "$HTTP_CODE"; fail=1
     fi
+  fi
+
+  # Runs whenever the write was attempted, even when its response failed. A failed
+  # cleanup keeps the table pending for the exit trap and fails the run.
+  if [ -n "$body" ]; then
     probe_cleanup "$REST/$t" "$filter" || fail=1
+    forget_pending "$t"
   fi
 done
 
