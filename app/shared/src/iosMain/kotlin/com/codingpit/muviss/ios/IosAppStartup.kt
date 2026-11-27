@@ -69,6 +69,5 @@ object IosAppStartup {
         IosBackgroundRefresh.register()
         IosBackgroundRefresh.scheduleNext()
         IosNotificationCenter.configure()
-        IosNotificationSettings.refresh()
     }
 }

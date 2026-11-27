@@ -69,6 +69,13 @@ FROM collectionEntry
 WHERE deleted = 0
 ORDER BY addedAtEpochMs DESC;
 
+-- Every row, tombstones included, for the data export (#1074): a backup carries a removal so a device still
+-- holding the live row removes it on restore. `selectAll` keeps filtering `deleted`.
+selectAllIncludingDeleted:
+SELECT *
+FROM collectionEntry
+ORDER BY addedAtEpochMs DESC;
+
 selectById:
 SELECT *
 FROM collectionEntry
