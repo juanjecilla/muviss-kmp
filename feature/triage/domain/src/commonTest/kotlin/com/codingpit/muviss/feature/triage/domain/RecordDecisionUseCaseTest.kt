@@ -5,14 +5,22 @@ import com.codingpit.muviss.core.model.WatchStatusCalculator
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.MediaDetails
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RecordDecisionUseCaseTest {
@@ -243,6 +251,149 @@ class RecordDecisionUseCaseTest {
         assertTrue(h.repository.decisions.value.values.all { it.resolved })
     }
 
+    // --- a failed claim write after the add (#1071) ---
+
+    @Test
+    fun a_failed_claim_write_after_the_add_takes_the_added_entry_back() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+
+        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure)
+
+        assertEquals(listOf(endedShow.id), h.collection.removed, "the add this attempt made is rolled back")
+        assertEquals(emptyList(), h.collection.summaries.value, "the library is as it was before the verdict")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "no claim was written")
+    }
+
+    @Test
+    fun a_retry_after_a_rolled_back_claim_write_claims_and_undo_removes_the_entry() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        val claim = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(claim.createdEntry)
+        assertNotNull(claim.entryAddedAtEpochMs)
+
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(emptyList(), h.collection.summaries.value, "undo takes the retried claim's entry back")
+    }
+
+    @Test
+    fun a_verdict_cancelled_during_its_claim_write_propagates_and_still_takes_the_added_entry_back() = runTest {
+        val h = harness()
+        h.repository.beforeClaimWrite = { awaitCancellation() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
+
+        assertNull(outcome, "a cancelled verdict must not return a Result, it must throw the cancellation (#1079)")
+        assertEquals(emptyList(), h.collection.summaries.value)
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
+    fun a_caller_cancelled_during_the_rollback_after_a_failed_claim_still_ends_cancelled_not_failed() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        val gate = CompletableDeferred<Unit>()
+        h.collection.beforeRemove = { gate.await() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        gate.complete(Unit)
+        job.join()
+
+        assertNull(outcome, "a cancelled caller must end cancelled even when the failure was not a cancellation (#1079)")
+        assertEquals(emptyList(), h.collection.summaries.value, "the rollback still runs to completion under NonCancellable")
+    }
+
+    @Test
+    fun a_verdict_cancelled_while_its_title_is_fetched_propagates_the_cancellation() = runTest {
+        val useCase = RecordDecisionUseCase(
+            FakeTriageDecisionRepository(),
+            FakeCollectionApi(),
+            FakeProgressApi(),
+            object : TriageDetailsSource {
+                override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = awaitCancellation()
+            },
+            FakeClock(NOW_EPOCH_MS),
+        )
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
+
+        assertNull(outcome, "a cancelled verdict must not return a Result, it must throw the cancellation (#1079)")
+    }
+
+    @Test
+    fun a_cancellation_from_an_inner_source_while_the_caller_is_alive_is_a_failure() = runTest {
+        val useCase = RecordDecisionUseCase(
+            FakeTriageDecisionRepository(),
+            FakeCollectionApi(),
+            FakeProgressApi(),
+            object : TriageDetailsSource {
+                override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = Result.failure(kotlinx.coroutines.CancellationException("inner source cancelled"))
+            },
+            FakeClock(NOW_EPOCH_MS),
+        )
+
+        val result = useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        assertTrue(result.isFailure, "the caller is not cancelled, so the failure is returned for the retry UI (#1079)")
+    }
+
+    @Test
+    fun a_claim_committed_before_a_cancellation_keeps_the_entry_its_claim_names() = runTest {
+        // #1076: the claim row commits, then the coroutine is cancelled before record() returns. The rollback must not
+        // remove the entry the stored claim names, or the decision is left with a claim for an entry that is gone.
+        val h = harness()
+        h.repository.afterClaimWrite = { awaitCancellation() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
+
+        assertNull(outcome, "a cancelled verdict must throw the cancellation (#1079)")
+        val stored = assertNotNull(h.repository.decisions.value[endedShow.id])
+        assertTrue(stored.createdEntry, "the committed claim is kept")
+        assertEquals(1, h.collection.summaries.value.size, "the entry the committed claim names survives the rollback (#1076)")
+        assertEquals(h.collection.summaries.value.single().addedAtEpochMs, stored.entryAddedAtEpochMs)
+    }
+
+    @Test
+    fun a_failed_rollback_does_not_replace_the_failure_that_caused_it() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.collection.failRemove = IllegalStateException("remove failed too")
+
+        val failure = h.useCase(endedShow, TriageVerdict.CAUGHT_UP).exceptionOrNull()
+
+        assertEquals("disk full", failure?.message, "the original failure is the one thrown; the rollback failure is reported")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
+    fun a_failed_claim_write_leaves_an_entry_the_person_already_had_alone() = runTest {
+        val h = harness()
+        h.collection.add(endedDetails)
+        h.repository.failUnclaimedClaimWrite = IllegalStateException("disk full")
+
+        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure, "the claim write failed, so the verdict fails")
+
+        assertEquals(emptyList(), h.collection.removed, "an entry present before the verdict is never rolled back")
+        assertEquals(listOf(endedShow.id), h.collection.summaries.value.map { it.mediaId })
+    }
+
     // --- undo ---
 
     @Test
@@ -319,22 +470,50 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
-    fun a_retry_keeps_the_claim_the_first_attempt_recorded() = runTest {
+    fun a_retry_retires_a_pre_stamp_claim_when_an_entry_is_already_there() = runTest {
         val h = harness()
-        // The first attempt recorded its claim before its side effects failed. The
-        // retry adds the entry itself, so re-reading the library would now say "already there".
+        // A claim recorded before the stamp column (#1058): it names no entry, so a present entry cannot be proven to be
+        // the one it made. The retry retires it, and undo leaves the entry alone.
         h.repository.record(
             TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
         )
-        // The entry the first attempt added is already in the library when the retry runs. A retry that recomputed
-        // ownership from the library would now read "already there", drop the claim, and undo would keep the entry.
         h.collection.add(endedDetails)
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
-        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry must keep the stored claim")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry retires a pre-stamp claim")
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
-        assertEquals(listOf(endedShow.id), h.collection.removed)
+        assertEquals(emptyList(), h.collection.removed)
+    }
+
+    @Test
+    fun a_pre_stamp_claim_retried_with_no_entry_present_claims_the_entry_its_add_makes() = runTest {
+        val h = harness()
+        // A row written before the stamp column, and the entry it named is gone: the retry's add makes it now.
+        h.repository.record(
+            TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
+        )
+
+        h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry, "an add that makes the entry keeps the claim")
+        assertNotNull(retried.entryAddedAtEpochMs)
+    }
+
+    @Test
+    fun a_retry_keeps_a_stamped_claim_the_first_attempt_recorded() = runTest {
+        val h = harness()
+        // The first attempt's add made the entry and stamped it. The retry finds that entry still there, so the
+        // claim, and the stamp it carries, stay as they were.
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val first = h.repository.decisions.value.getValue(endedShow.id)
+        assertNotNull(first.entryAddedAtEpochMs)
+        h.useCase.retry(first).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry, "the retry keeps a stamped claim")
+        assertEquals(first.entryAddedAtEpochMs, retried.entryAddedAtEpochMs)
     }
 
     @Test

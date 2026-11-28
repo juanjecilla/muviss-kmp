@@ -40,7 +40,7 @@ Requires `adb`, `sqlite3`, `curl`, `python3` and the `supabase` CLI.
 | Script | Answers |
 |---|---|
 | `sync-status.sh` | Device rows vs server rows vs dirty rows, and the two sync timestamps. Start here. Refuses `MUVISS_SUPABASE_TARGET=local`: there is no device to compare. |
-| `verify-rls.sh` | Can the anon key — which ships inside the app — read or write anyone's data? |
+| `verify-rls.sh` | Can the anon key — which ships inside the app — read or write anyone's data? Each table is checked against a row the signed-in device user writes first, so an empty read proves something. Hosted runs need `RLS_PEER_USER_ID` (another account's id, with no cowatch link to the device user yet; a 409 on the cowatch tables means it has one) for the two cowatch tables (#1024). |
 | `verify-lww-trigger.sh` | Does `discard_stale_write()` fire on the upsert path the client actually uses? |
 | `diagnose-signin.sh` | Why OAuth sign-in didn't complete, walked boundary by boundary. Refuses `MUVISS_SUPABASE_TARGET=local`: its logcat and device steps need a phone. |
 | `verify-server-seq.sh` | Does the `server_seq` trigger stamp, skip stale writes, clamp future timestamps and ignore a client-sent value? Run after `supabase db push` applies `20260920000000_sync_server_seq.sql` (EPIC 39, ADR 0020). |

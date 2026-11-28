@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.feature.onboarding.api.NotificationNudgeResult
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
@@ -57,8 +58,8 @@ class NotificationNudgeViewModelTest {
     }
 
     /**
-     * [off] and [askable] are what the OS says now. The suspend reads answer those and, like iOS, copy them
-     * into a cache; the synchronous reads answer only that cache, which a test can leave behind the OS (#846).
+     * [off] and [askable] are what the OS says now. One [statusNow] is one read: it answers the state as it
+     * was when the read began, and only returns after [heldRead] completes (#1016).
      */
     private class FakeSystem : SystemNotificationSettings {
         var opened = 0
@@ -69,17 +70,8 @@ class NotificationNudgeViewModelTest {
         /** False once the OS has stopped asking (#326). */
         var askable = true
 
-        private var cachedOff = false
-        private var cachedAskable = true
-
-        /** Sets what the synchronous reads see, as if the platform had not been asked since the OS changed. */
-        fun cache(off: Boolean, askable: Boolean) {
-            cachedOff = off
-            cachedAskable = askable
-        }
-
-        override fun blocked(): Boolean = cachedOff
-        override fun canAskAgain(): Boolean = cachedAskable
+        /** How many OS reads the view model has made; one decision should make one (#1016). */
+        var reads = 0
 
         /**
          * When set, the next OS read answers what the OS said when it started, and only returns after this completes.
@@ -88,16 +80,11 @@ class NotificationNudgeViewModelTest {
          */
         var heldRead: CompletableDeferred<Unit>? = null
 
-        override suspend fun blockedNow(): Boolean {
-            val answer = off
+        override suspend fun statusNow(): NotificationStatus {
+            reads++
+            val answer = NotificationStatus(blocked = off, canAskAgain = askable)
             heldRead?.also { heldRead = null }?.let { withContext(NonCancellable) { it.await() } }
-            cache(off, askable)
             return answer
-        }
-
-        override suspend fun canAskAgainNow(): Boolean {
-            cache(off, askable)
-            return askable
         }
 
         override fun open() {
@@ -237,21 +224,19 @@ class NotificationNudgeViewModelTest {
     }
 
     @Test
-    fun a_nudge_built_after_a_refusal_was_undone_in_settings_offers_turn_on_not_a_stale_explanation() = runTest {
-        system.cache(off = true, askable = false)
+    fun a_refusal_undone_in_settings_offers_turn_on_not_a_stale_explanation() = runTest {
         system.off = false
         system.askable = true
         val vm = viewModel()
 
-        assertEquals(false, vm.state.value.blocked, "the OS now allows notifications; the cache still says refused")
+        assertEquals(false, vm.state.value.blocked, "the OS now allows notifications")
         vm.turnOn()
         assertEquals(1, onboarding.accepted, "the OS would show a prompt, so the tap asks")
     }
 
     @Test
-    fun a_turn_on_tapped_after_notifications_were_refused_in_settings_does_not_ask_from_a_stale_cache() = runTest {
+    fun a_turn_on_tapped_after_notifications_were_refused_in_settings_does_not_ask() = runTest {
         val vm = viewModel()
-        system.cache(off = false, askable = true)
         system.off = true
         system.askable = false
 
@@ -275,8 +260,7 @@ class NotificationNudgeViewModelTest {
     }
 
     @Test
-    fun a_refusal_still_in_force_at_construction_explains_at_once_from_a_stale_allowed_cache() = runTest {
-        system.cache(off = false, askable = true)
+    fun a_refusal_still_in_force_at_construction_explains_at_once() = runTest {
         system.off = true
         system.askable = false
 
@@ -412,6 +396,66 @@ class NotificationNudgeViewModelTest {
     }
 
     @Test
+    fun a_refused_for_good_read_is_one_os_read_so_its_two_answers_cannot_come_from_two_moments() = runTest {
+        system.off = true
+        system.askable = false
+
+        viewModel()
+
+        assertEquals(1, system.reads, "blocked and can-ask-again must come from one read of the OS (#1016)")
+        assertEquals(true, viewModel().state.value.blocked)
+    }
+
+    @Test
+    fun a_second_tap_while_the_first_is_asking_the_os_does_not_ask_again() = runTest {
+        onboarding.answer = NotificationNudgeResult.ENABLED
+        val held = CompletableDeferred<Unit>()
+        onboarding.heldAccept = held
+        val vm = viewModel()
+
+        vm.turnOn()
+        vm.turnOn()
+        held.complete(Unit)
+
+        assertEquals(1, onboarding.accepted, "a double tap is one decision, so the OS is asked once")
+        assertEquals(false, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_second_tap_while_the_first_is_reading_the_os_does_not_ask_again() = runTest {
+        onboarding.answer = NotificationNudgeResult.ENABLED
+        system.off = true
+        system.askable = true
+        val vm = viewModel()
+        val read = CompletableDeferred<Unit>()
+        system.heldRead = read
+
+        vm.turnOn()
+        vm.turnOn()
+        read.complete(Unit)
+
+        assertEquals(1, onboarding.accepted, "the first tap has not reached the OS yet, and the second must not either")
+    }
+
+    @Test
+    fun a_double_tap_refused_for_good_still_ends_on_the_blocked_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        onboarding.onAnswer = { system.askable = false }
+        val held = CompletableDeferred<Unit>()
+        onboarding.heldAccept = held
+        val vm = viewModel()
+
+        vm.turnOn()
+        vm.turnOn()
+        held.complete(Unit)
+
+        assertEquals(1, onboarding.accepted)
+        assertEquals(true, vm.state.value.blocked)
+        assertEquals(false, vm.state.value.retryable)
+    }
+
+    @Test
     fun a_first_refusal_keeps_turn_on_and_the_next_tap_asks_the_os_again() = runTest {
         onboarding.answer = NotificationNudgeResult.DENIED
         system.off = true
@@ -477,22 +521,18 @@ class NotificationNudgeViewModelTest {
     }
 
     @Test
-    fun a_newer_turn_on_is_not_hidden_when_an_older_one_finishes_answering() = runTest {
+    fun a_tap_while_the_first_is_answering_is_ignored_and_the_first_answer_settles_the_banner() = runTest {
         val firstAnswer = CompletableDeferred<Unit>()
         onboarding.heldAccept = firstAnswer
         val vm = viewModel()
         vm.turnOn()
 
-        val secondAnswer = CompletableDeferred<Unit>()
-        onboarding.heldAccept = secondAnswer
         vm.turnOn()
-        assertEquals(2, onboarding.accepted)
+        assertEquals(1, onboarding.accepted, "the tap during an answer is the same decision (#1003)")
+        assertEquals(true, vm.state.value.visible, "the first turn-on is still answering the OS")
 
         firstAnswer.complete(Unit)
-        assertEquals(true, vm.state.value.visible, "the second turn-on is still answering the OS")
-
-        secondAnswer.complete(Unit)
-        assertEquals(false, vm.state.value.visible, "the last answer settles the banner")
+        assertEquals(false, vm.state.value.visible, "the answer settles the banner")
     }
 
     @Test

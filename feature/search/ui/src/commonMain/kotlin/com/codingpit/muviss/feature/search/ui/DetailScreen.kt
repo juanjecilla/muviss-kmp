@@ -25,7 +25,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -90,6 +94,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -114,7 +119,9 @@ import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoSideInsets
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveSideInsets
 import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
@@ -427,13 +434,10 @@ private fun DetailCompact(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
-        state = listState,
-        contentPadding = PaddingValues(bottom = bottomPadding),
-    ) {
+    val sideInsets = immersiveSideInsets()
+    DetailList(listState, bottomPadding, sideInsets) {
         indexed(anchors) {
-            item(key = "hero", contentType = "hero") { DetailHero(details, callbacks.navigation.onOpenImage) }
+            item(key = "hero", contentType = "hero") { DetailHero(details, callbacks.navigation.onOpenImage, sideInsets) }
             item(key = "actions", contentType = "actions") {
                 Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
                     ActionRow(state, viewModel, callbacks, scrollToSpecials)
@@ -467,15 +471,12 @@ private fun DetailExpanded(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
-        state = listState,
-        contentPadding = PaddingValues(bottom = bottomPadding),
-    ) {
+    val sideInsets = immersiveSideInsets()
+    DetailList(listState, bottomPadding, sideInsets) {
         indexed(anchors) {
             item(key = "hero", contentType = "hero") {
                 Column {
-                    DetailBackdrop(details, height = 200.dp, onOpenImage = callbacks.navigation.onOpenImage)
+                    DetailBackdrop(details, height = 200.dp, horizontalInsets = sideInsets, onOpenImage = callbacks.navigation.onOpenImage)
                     Row(
                         Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
                         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
@@ -510,6 +511,46 @@ private fun DetailExpanded(
 }
 
 private val POSTER_COLUMN_WIDTH = 150.dp
+
+/**
+ * The sideways bands a landscape cutout takes, read both ways the list needs them: [left]/[right] are the physical
+ * extension of the list itself, and [start]/[end] are the logical padding that puts every row back inside the safe
+ * area (#1067).
+ */
+internal class SideBands(val left: Dp, val right: Dp, val start: Dp, val end: Dp)
+
+/**
+ * The Detail list. It runs sideways into a landscape cutout, as the Image Viewer does (#1067), and pads its rows back
+ * inside the safe area, so only the hero draws into the band. A `LazyColumn` clips what it draws, so the hero cannot
+ * extend past the list on its own: the list has to.
+ */
+@Composable
+internal fun DetailList(
+    listState: LazyListState,
+    bottomPadding: Dp,
+    horizontalInsets: WindowInsets,
+    content: LazyListScope.() -> Unit,
+) {
+    val sides = sideBandsOf(horizontalInsets)
+    LazyColumn(
+        Modifier.fillMaxSize().extendIntoSideInsets(left = sides.left, right = sides.right).testTag(DETAIL_LIST_TAG),
+        state = listState,
+        contentPadding = PaddingValues(start = sides.start, end = sides.end, bottom = bottomPadding),
+        content = content,
+    )
+}
+
+@Composable
+internal fun sideBandsOf(insets: WindowInsets): SideBands {
+    val padding = insets.asPaddingValues()
+    val layoutDirection = LocalLayoutDirection.current
+    return SideBands(
+        left = padding.calculateLeftPadding(layoutDirection),
+        right = padding.calculateRightPadding(layoutDirection),
+        start = padding.calculateStartPadding(layoutDirection),
+        end = padding.calculateEndPadding(layoutDirection),
+    )
+}
 
 internal const val DETAIL_LIST_TAG = "detailList"
 
@@ -610,19 +651,23 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
 
 /** 16:9 backdrop with a gradient into the background color. */
 @Composable
-private fun DetailBackdrop(
+internal fun DetailBackdrop(
     details: MediaDetails,
     height: androidx.compose.ui.unit.Dp,
     // The hero draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
     topInset: androidx.compose.ui.unit.Dp = immersiveTopPadding(),
+    // The hero also follows the Image Viewer into the side bands of a landscape cutout (#1067).
+    horizontalInsets: WindowInsets = immersiveSideInsets(),
     onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
 ) {
     val background = MaterialTheme.colorScheme.background
+    val sides = sideBandsOf(horizontalInsets)
     Box(
         Modifier
             .fillMaxWidth()
             .height(height + topInset)
+            .extendIntoSideInsets(left = sides.left, right = sides.right)
             .trackImmersiveArtwork()
             .testTag(DETAIL_BACKDROP_TAG)
             .opensImageViewer(details.backdropUrl, ImageKind.Backdrop, onOpenImage),
@@ -647,9 +692,9 @@ private fun DetailBackdrop(
 
 /** Compact hero: backdrop + poster overlapping down into the content. */
 @Composable
-private fun DetailHero(details: MediaDetails, onOpenImage: (ImageKind, String) -> Unit) {
+private fun DetailHero(details: MediaDetails, onOpenImage: (ImageKind, String) -> Unit, horizontalInsets: WindowInsets) {
     Box(Modifier.fillMaxWidth()) {
-        DetailBackdrop(details, height = 200.dp, onOpenImage = onOpenImage)
+        DetailBackdrop(details, height = 200.dp, horizontalInsets = horizontalInsets, onOpenImage = onOpenImage)
         Row(
             Modifier
                 .align(Alignment.BottomStart)
