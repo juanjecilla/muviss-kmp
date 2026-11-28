@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "shelves": [
+    {
+      "id": "five-titles",
+      "category": "editorial",
+      "title": {
+        "en": "Five horror films"
+      },
+      "source": {
+        "kind": "titles",
+        "items": [
+          {
+            "mediaType": "movie",
+            "tmdbId": 948
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 539
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 694
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 9552
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 4232
+          }
+        ]
+      }
+    },
+    {
+      "id": "still-renders",
+      "category": "charts",
+      "title": {
+        "en": "This one renders"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "trending_day",
+        "mediaType": "movie"
+      }
+    }
+  ]
+}

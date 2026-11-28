@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "shelves": [
+    {
+      "id": "still-renders",
+      "category": "charts",
+      "title": {
+        "en": "This one renders"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "trending_day",
+        "mediaType": "movie"
+      }
+    }
+  ]
+}

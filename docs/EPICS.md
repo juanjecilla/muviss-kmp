@@ -679,3 +679,15 @@ Added 2026-10-19 from a grilling session. **ADR 0035**; vocabulary in `CONTEXT.m
 ## EPIC 53 follow-up: specials (#938, ADR 0038)
 
 **Schema claim: `33.sqm` (fixture `34.db`)**, taking a v33 database to v34: `appSettings.countSpecialsTowardProgress`, per device, default off. `30`-`32` have landed on develop (#853, #785, the triage undo), so the chain is whole; `33` was the next free number when #938 merged develop in, and the number should be re-checked before merging. Specials load from TMDB on their own request (`TmdbProvider`) and are counted by choice at read time only (`SpecialsCounting`, ADR 0038). Follow-ups are issues.
+
+## EPICs 54-57 — Discover Lineup, chip search, Personalization, Criterion (added 2026-11-28)
+
+From one grilling session. Spec: `docs/proposals/discover-lineup.md`; **ADR 0040** (served static file, deployed from develop); later backend: `docs/proposals/lineup-backend.md`. Not built. No migration number is reserved.
+
+- **EPIC 54 (#1132) — Discover Lineup.** Server-published, schedulable shelves with seven source kinds, `lineupUrl`, offline copy. First.
+- **EPIC 55 (#1133) — Chip search.** People, keywords, collections and studios as chips over `/discover`. After 54.
+- **EPIC 56 (#1134) — Personalization.** Settings submenu; synced shelf-category switches. After 54.
+- **EPIC 57 (#1135) — Criterion Collection.** Set generated from Wikidata spine numbers, plus a Criterion Channel shelf. After 54.
+
+**Follow-ups:** "On my services" (#1136), Snooze cards through `summary(id)` (#1137), a people shelf (#1138), studio and network pages (#1139), Supabase-hosted Lineup (#1140).
+
