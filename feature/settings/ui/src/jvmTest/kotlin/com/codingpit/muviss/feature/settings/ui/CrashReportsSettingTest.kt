@@ -19,6 +19,7 @@ import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
@@ -158,7 +159,7 @@ class CrashReportsSettingTest {
 
     private class FakeSystemNotifications(var blocked: Boolean) : SystemNotificationSettings {
         var opened = 0
-        override fun blocked(): Boolean = blocked
+        override suspend fun statusNow(): NotificationStatus = NotificationStatus(blocked = blocked, canAskAgain = true)
         override fun open() {
             opened++
         }
@@ -231,6 +232,8 @@ internal object NoFlags : FeatureFlags {
     override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val completionPromptEnabled = MutableStateFlow(true)
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
+    override val countSpecialsTowardProgress = MutableStateFlow(false)
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) = Unit
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
     override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit

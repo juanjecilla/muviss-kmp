@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -126,6 +127,7 @@ internal fun ProgressWithEntryContent(onOpenNextPick: (() -> Unit)?, withTitle: 
     val watchNextCache = EpisodeCatalogCache(
         FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(if (withTitle) mapOf(show to episodes) else emptyMap())),
         InMemoryEpisodeCatalogStore(),
+        DataEraseFence(),
     )
     val watchNextViewModel = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, FakeClock(1_000L * 86_400_000L)),
@@ -133,7 +135,7 @@ internal fun ProgressWithEntryContent(onOpenNextPick: (() -> Unit)?, withTitle: 
         watchNextCache,
         FakeFeatureFlags(),
     )
-    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val upcomingViewModel = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
 
     ProgressScreen(watchNextViewModel, upcomingViewModel, onOpenDetail = {}, onOpenCoWatch = null, onOpenNextPick = onOpenNextPick)

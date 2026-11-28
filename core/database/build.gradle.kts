@@ -77,6 +77,13 @@ kotlin {
         iosMain.dependencies {
             implementation(libs.sqldelight.nativeDriver)
         }
+        // The web driver's ordering test runs suspend `QueryResult`s, which
+        // need a coroutine runner outside `commonTest`.
+        matching { it.name == "webTest" }.configureEach {
+            dependencies {
+                implementation(libs.kotlinx.coroutinesTest)
+            }
+        }
         // Web persistence (EPIC 13 / ADR 0008's amendment):
         // `web-worker-driver` talks to a Web Worker running
         // `@cashapp/sqldelight-sqljs-worker` (SQL.js compiled to wasm), which

@@ -7,8 +7,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -44,16 +49,19 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoSideInsets
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
 import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -65,6 +73,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_s
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.TitleImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -102,6 +111,12 @@ internal fun ImageViewerContent(
     onClose: () -> Unit,
     /** The image the person tapped; the first page is swapped for the source's larger copy of it, and falls back to it. */
     seed: TitleImage? = null,
+    /**
+     * The sideways safe area the black viewer runs under: a landscape cutout. Read by the viewer, not inherited, because
+     * [com.codingpit.muviss.core.designsystem.layout.ScreenInsets] pads it for every screen and the viewer is the one
+     * screen that is black edge to edge.
+     */
+    horizontalInsets: WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
     /** Reports the size of the picture each page draws, whenever it changes. Tests read it; the viewer does not. */
     onPageSize: (TitleImage, Size?) -> Unit = { _, _ -> },
 ) {
@@ -119,8 +134,37 @@ internal fun ImageViewerContent(
     // Raw, because ScreenInsets already consumed the top for this subtree; see immersiveTopPadding. The viewer
     // extends up into that band so its black runs under the status bar, and its controls clear it by hand.
     val topInset = immersiveTopPadding()
+    val sides = horizontalInsets.asPaddingValues()
+    val layoutDirection = LocalLayoutDirection.current
+    // Physical sides: a cutout is on a named side of the screen whatever the reading direction.
+    val leftInset = sides.calculateLeftPadding(layoutDirection)
+    val rightInset = sides.calculateRightPadding(layoutDirection)
+    // The close button sits in the start corner, so it clears the start inset (the right one in a right-to-left layout).
+    val closeInset = if (layoutDirection == LayoutDirection.Rtl) rightInset else leftInset
     val pager = rememberPagerState { images.size }
     val scope = rememberCoroutineScope()
+    // The page the arrow keys have asked for and the pager has not reached yet. A second press before the first turn
+    // settles aims from here, so it moves on from the first target instead of re-aiming at the same page.
+    var turnTarget by remember { mutableStateOf<Int?>(null) }
+    var turnSerial by remember { mutableStateOf(0L) }
+    // The animation the latest turn launched. A new turn cancels it first: animateScrollToPage returns without scrolling
+    // when the pager already sits on the target, so a superseded animation would otherwise run on to its own page.
+    val turnJob = remember { arrayOfNulls<Job>(1) }
+    val turnTo: (Int) -> Unit = { page ->
+        turnSerial += 1
+        val serial = turnSerial
+        turnTarget = page
+        turnJob[0]?.cancel()
+        turnJob[0] = scope.launch {
+            try {
+                pager.animateScrollToPage(page)
+            } finally {
+                // Only the latest turn clears it. Keyed on the serial, not the page: a press at the end of the gallery
+                // turns to the page it is already on, and a superseded turn must not clear the one that replaced it.
+                if (turnSerial == serial) turnTarget = null
+            }
+        }
+    }
     val focus = remember { FocusRequester() }
     var controlsVisible by remember { mutableStateOf(true) }
     val flick = rememberFlickToDismissState()
@@ -135,6 +179,7 @@ internal fun ImageViewerContent(
         Modifier
             .fillMaxSize()
             .extendIntoTopInset(topInset)
+            .extendIntoSideInsets(left = leftInset, right = rightInset)
             .background(Color.Black)
             .testTag(IMAGE_VIEWER_TAG)
             .onPreviewKeyEvent { event ->
@@ -147,13 +192,15 @@ internal fun ImageViewerContent(
                     Key.DirectionRight -> if (zoomed) {
                         pan(scope, zoom, Offset(-panStep, 0f))
                     } else {
-                        scope.launch { pager.animateScrollToPage((pager.currentPage + 1).coerceAtMost(images.lastIndex)) }.let { true }
+                        turnTo(((turnTarget ?: pager.currentPage) + 1).coerceAtMost(images.lastIndex))
+                        true
                     }
 
                     Key.DirectionLeft -> if (zoomed) {
                         pan(scope, zoom, Offset(panStep, 0f))
                     } else {
-                        scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) }.let { true }
+                        turnTo(((turnTarget ?: pager.currentPage) - 1).coerceAtLeast(0))
+                        true
                     }
 
                     Key.DirectionDown -> zoomed && pan(scope, zoom, Offset(0f, -panStep))
@@ -183,7 +230,7 @@ internal fun ImageViewerContent(
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier.padding(top = topInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
+                modifier = Modifier.padding(top = topInset, start = closeInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
             ) {
                 IconButton(onClick = leave) {
                     Icon(MuvissIcons.Close, contentDescription = stringResource(Res.string.action_close), tint = Color.White)

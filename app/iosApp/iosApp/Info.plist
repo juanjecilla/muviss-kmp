@@ -60,6 +60,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<!--
+	  Status bar: the app sets it (LightStatusBarIcons), so UIKit must not ask the view controller.
+	-->
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<!--
 	  Launch screen: a flat colour, LaunchBackground in Assets.xcassets, which is
 	  MuvissPalette's background in dark (#14120E) and light (#FDF8EF). Replaces the
 	  generated launch screen (INFOPLIST_KEY_UILaunchScreen_Generation).

@@ -1,17 +1,23 @@
 package com.codingpit.muviss.core.remoteconfig
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 import com.codingpit.muviss.core.common.remoteconfig.NEXT_PICK_DEFAULT_RESULT_MODE
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.configcat.ConfigCatClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,8 +36,12 @@ class ConfigCatRemoteConfigTest {
     private companion object {
         /** Shaped like a TMDB v4 read token (a JWT); nothing else replaces the built-in one. */
         const val ROTATED = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJyb3RhdGVkIn0.c2lnbmF0dXJl"
+        const val ROTATED_AGAIN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJyb3RhdGVkQWdhaW4ifQ.c2lnbmF0dXJlMg"
     }
     private var requests = 0
+
+    /** Runs inside the engine's handler before it answers: a test holds the SDK's fetch here. */
+    private var beforeAnswering: suspend () -> Unit = {}
     private var body: String = served(byok = true, token = ROTATED)
     private var status = HttpStatusCode.OK
 
@@ -43,8 +53,11 @@ class ConfigCatRemoteConfigTest {
 
     private val engine = MockEngine {
         requests++
+        // Fixed when the request arrives, so a test can tell which of two fetches a stored answer came from.
+        val answer = body
+        beforeAnswering()
         respond(
-            body,
+            answer,
             status,
             Headers.build {
                 append(HttpHeaders.ContentType, "application/json")
@@ -58,13 +71,97 @@ class ConfigCatRemoteConfigTest {
     private var keyCounter = 0
     private fun sdkKey() = "configcat-sdk-1/${"k${++keyCounter}x${System.nanoTime()}".padEnd(22, 'a').take(22)}/aaaaaaaaaaaaaaaaaaaaaa"
 
-    private fun remote(key: String, db: MuvissDatabase, clock: FakeClock) = ConfigCatRemoteConfig(
+    private fun remote(key: String, db: MuvissDatabase, clock: FakeClock, erasures: DataEraseFence = DataEraseFence()) = ConfigCatRemoteConfig(
         sdkKey = key,
         engine = engine,
         cache = SqlDelightConfigCache(db.remoteConfigCacheQueries),
         defaults = defaults,
         clock = clock,
+        erasures = erasures,
     )
+
+    private fun SqlDriver.rowCount(): Long = executeQuery(
+        identifier = null,
+        sql = "SELECT COUNT(*) FROM remoteConfigCache",
+        mapper = { cursor ->
+            check(cursor.next().value)
+            QueryResult.Value(cursor.getLong(0)!!)
+        },
+        parameters = 0,
+    ).value
+
+    @Test
+    fun a_refresh_in_flight_during_delete_all_data_stores_no_config() = runTest {
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        val arrived = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAnswering = {
+            arrived.complete(Unit)
+            release.await()
+        }
+        val config = remote(sdkKey(), db, FakeClock(0), fence)
+
+        val refreshing = async { config.refreshIfStale() }
+        arrived.await() // the SDK has asked TMDB's CDN; its answer is held here
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+        release.complete(Unit)
+        refreshing.await()
+
+        assertEquals(0L, driver.rowCount(), "a config fetched before Delete all data is not stored after it")
+    }
+
+    @Test
+    fun a_cancelled_refresh_whose_fetch_is_still_in_flight_stores_nothing_after_delete_all_data() = runTest {
+        // #1080: the SDK runs the fetch in its own coroutine. Cancelling the refresh must not leave that fetch
+        // running unfenced while a second refresh, started after the erase, joins it and passes the check.
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        val arrived = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAnswering = {
+            arrived.complete(Unit)
+            release.await()
+        }
+        val config = remote(sdkKey(), db, FakeClock(0), fence)
+
+        val first = async { config.refreshIfStale() }
+        arrived.await() // the SDK has asked TMDB's CDN; its answer is held here
+        first.cancel()
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+        // The erased refresh did not complete (#1091), so this one fetches again and its answer is the one stored.
+        body = served(byok = true, token = ROTATED_AGAIN)
+        val second = async { config.refreshIfStale() }
+        release.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals(ROTATED_AGAIN, storedToken(driver), "a config fetched before Delete all data is not stored after it")
+    }
+
+    private fun storedToken(driver: SqlDriver): String? = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT value FROM remoteConfigCache",
+        mapper = { cursor ->
+            QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
+        },
+        parameters = 0,
+    ).value?.let { stored -> Regex("""eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""").find(stored)?.value }
+
+    @Test
+    fun a_refresh_that_starts_after_delete_all_data_stores_the_config() = runTest {
+        // The positive control: the fence drops only writes requested before an erase, never all of them.
+        val driver = inMemoryDriver()
+        val db = MuvissDatabase(driver)
+        val fence = DataEraseFence()
+        fence.erase { db.remoteConfigCacheQueries.deleteAll() }
+
+        remote(sdkKey(), db, FakeClock(0), fence).refreshIfStale()
+
+        assertEquals(1L, driver.rowCount())
+    }
 
     @Test
     fun nothing_is_fetched_until_a_refresh_is_asked_for() = runTest {
@@ -155,6 +252,36 @@ class ConfigCatRemoteConfigTest {
         clock.epochMs = 61 * 60 * 1000L
         config.refreshIfStale()
         assertEquals(2, requests)
+    }
+
+    @Test
+    fun a_refresh_whose_write_was_fenced_does_not_throttle_the_next_one() = runTest {
+        // #1091: the erase drops the write, so that fetch did not complete; the next foreground refresh, inside the
+        // hour, must fetch again rather than serve defaults for the rest of it.
+        val clock = FakeClock(0)
+        val fence = DataEraseFence()
+        val driver = inMemoryDriver()
+        val arrived = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAnswering = {
+            arrived.complete(Unit)
+            release.await()
+        }
+        val config = remote(sdkKey(), MuvissDatabase(driver), clock, fence)
+
+        val refreshing = async { config.refreshIfStale() }
+        arrived.await()
+        fence.erase {}
+        release.complete(Unit)
+        refreshing.await()
+        beforeAnswering = {}
+
+        body = served(byok = true, token = ROTATED_AGAIN)
+        clock.epochMs = 1_000L
+        config.refreshIfStale()
+
+        assertEquals(2, requests)
+        assertEquals(ROTATED_AGAIN, storedToken(driver), "the fetch after the erase is what is stored")
     }
 
     @Test

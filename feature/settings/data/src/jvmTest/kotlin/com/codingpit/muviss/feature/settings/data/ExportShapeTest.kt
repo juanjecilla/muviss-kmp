@@ -43,10 +43,23 @@ class ExportShapeTest {
         assertEquals(
             listOf(
                 "mediaId", "mediaType", "verdict", "title", "posterUrl", "decidedAtEpochMs", "updatedAtEpochMs",
-                "resolved", "createdEntry", "entryAddedAtEpochMs", "tickedEpisodeIds",
+                "resolved", "createdEntry", "entryAddedAtEpochMs", "tickedEpisodeIds", "deleted",
             ),
             TriageDecisionExport.serializer().descriptor.elementNames.toList(),
         )
+    }
+
+    /**
+     * #1074: these carry their tombstones, so a backup can remove a row a device still holds. Each one's `deleted`
+     * is the last field and defaults, which is what keeps a backup from before it parsing.
+     */
+    @Test
+    fun `removable rows export their tombstone as the last, defaulted field`() {
+        assertEquals("deleted", CollectionEntryExport.serializer().descriptor.elementNames.last())
+        assertEquals("deleted", EpisodePlayExport.serializer().descriptor.elementNames.last())
+        assertEquals("deleted", TriageSnoozeExport.serializer().descriptor.elementNames.last())
+        assertEquals("deleted", MediaListExport.serializer().descriptor.elementNames.last())
+        assertEquals("deleted", ListEntryExport.serializer().descriptor.elementNames.last())
     }
 
     @Test
