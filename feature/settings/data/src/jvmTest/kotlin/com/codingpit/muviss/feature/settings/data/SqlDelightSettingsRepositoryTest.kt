@@ -222,7 +222,7 @@ class SqlDelightSettingsRepositoryTest {
     }
 
     @Test
-    fun exportData_excludes_soft_deleted_collection_entries() = runTest {
+    fun exportData_carries_soft_deleted_collection_entries_as_tombstones() = runTest {
         database.collectionEntryQueries.upsert(
             mediaId = "tmdb:movie:603",
             mediaType = "MOVIE",
@@ -246,9 +246,11 @@ class SqlDelightSettingsRepositoryTest {
             coWatchPinned = false,
         )
 
+        // #1074: a removal travels as a tombstone, so a device still holding the title removes it on restore.
         val json = repository.exportData()
         val collection = Json.parseToJsonElement(json).jsonObject["collection"]!!.jsonArray
-        assertTrue(collection.isEmpty())
+        assertEquals(1, collection.size)
+        assertTrue(collection.single().jsonObject["deleted"]!!.toString().toBoolean())
     }
 
     @Test
@@ -326,7 +328,7 @@ class SqlDelightSettingsRepositoryTest {
         assertEquals("Drama,Fantasy", entry.genres)
         assertEquals(60, entry.runtimeMinutes)
         assertTrue(entry.notificationsMuted)
-        assertEquals(listOf("Rainy day"), export.lists.map { it.name })
+        assertEquals(listOf("Rainy day" to false, "Deleted" to true), export.lists.map { it.name to it.deleted })
         assertEquals(listOf("list-1" to "tmdb:tv:1399"), export.listEntries.map { it.listId to it.mediaId })
         assertEquals(listOf(20_100L), export.snoozes.map { it.dueAtEpochDay })
         assertEquals("Juanje", export.profile?.displayName)

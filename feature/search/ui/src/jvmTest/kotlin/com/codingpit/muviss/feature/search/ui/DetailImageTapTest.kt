@@ -3,10 +3,11 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onNodeWithTag
@@ -25,6 +26,7 @@ import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -56,20 +58,38 @@ class DetailImageTapTest {
 
     @Test
     fun tapping_the_poster_opens_the_poster_gallery() = runComposeUiTest {
+        val loader = installLoader(emptyMap())
         val opened = mutableListOf<Pair<ImageKind, String>>()
         setContent { Detail(withArt = true) { kind, url -> opened += kind to url } }
         waitForIdle()
-        // No network here, so Coil's load fails and `PosterImage` swaps the picture for its title text. A click
-        // that lands mid-swap goes to a node that is gone, so wait for the settled one.
-        waitUntil(timeoutMillis = 5_000) {
-            onNodeWithTag(DETAIL_POSTER_TAG).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text) != null
-        }
+        // The load fails and `PosterImage` swaps the picture for its title text. A click that lands mid-swap goes to
+        // a node that is gone, so wait for the settled one.
+        waitForPosterSettled(loader)
 
         onNodeWithTag(DETAIL_POSTER_TAG).performClick()
 
         // The compact poster draws the w342 grid request, so the viewer opens on that same URL: it is cached, and
         // the picture is on screen offline. The stored w500 is a different cache entry.
         assertEquals(listOf(ImageKind.Poster to drawnImageUrl(POSTER, PosterSize.Grid)), opened)
+    }
+
+    @Test
+    fun the_poster_button_is_named_poster_while_its_picture_is_loading() = runComposeUiTest {
+        // Both sizes the screen can draw are held, so the poster is in its loading state whichever one is on screen.
+        val gate = CompletableDeferred<Unit>()
+        val held = Answer.Waits(gate, Size(200f, 300f))
+        val loader = installLoader(
+            mapOf(drawnImageUrl(POSTER, PosterSize.Detail)!! to held, drawnImageUrl(POSTER, PosterSize.Grid)!! to held),
+        )
+        try {
+            setContent { Detail(withArt = true) { _, _ -> } }
+            waitUntil(timeoutMillis = 10_000) { loader.requested.any { it.contains("/poster.jpg") } }
+            waitForIdle()
+
+            onNodeWithTag(DETAIL_POSTER_TAG).assertContentDescriptionEquals("Poster")
+        } finally {
+            gate.complete(Unit)
+        }
     }
 
     @Test
@@ -87,11 +107,10 @@ class DetailImageTapTest {
 
     @Test
     fun the_poster_button_has_a_name_and_keeps_its_action_label() = runComposeUiTest {
+        val loader = installLoader(emptyMap())
         setContent { Detail(withArt = true) { _, _ -> } }
         waitForIdle()
-        waitUntil(timeoutMillis = 5_000) {
-            onNodeWithTag(DETAIL_POSTER_TAG).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text) != null
-        }
+        waitForPosterSettled(loader)
 
         val poster = onNodeWithTag(DETAIL_POSTER_TAG)
         poster.assertContentDescriptionEquals("Poster")
@@ -108,6 +127,12 @@ class DetailImageTapTest {
         onNodeWithTag(DETAIL_POSTER_TAG).performClick()
 
         assertEquals(emptyList(), opened)
+    }
+
+    /** Waits until the poster's request has failed, so the picture has been swapped for its fallback. */
+    private fun ComposeUiTest.waitForPosterSettled(loader: ScriptedFetcherFactory) {
+        waitUntil(timeoutMillis = 5_000) { loader.finished.any { it.contains("/poster.jpg") } }
+        waitForIdle()
     }
 
     private companion object {

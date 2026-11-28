@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.data.di
 
+import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.CollectionTitleStatusSource
@@ -93,10 +94,11 @@ val progressDataModule: Module = module {
     factory { ProgressMutations(get(), get(), get(), get(), get()) }
     factory { SetMovieWatchedUseCase(get()) }
     factory { FetchEpisodeCatalogUseCase(get()) }
-    single { EpisodeCatalogCache(get(), get()) }
+    single { EpisodeCatalogCache(get(), get(), get()) }
     // `{ get() }` rather than `get()`: collection's repository depends on
     // `ProgressApi`, so resolving `CollectionApi` while building it closes a
     // cycle. See WatchNextUseCase's KDoc.
-    factory { WatchNextUseCase({ get() }, get(), get(), get(), get()) }
+    // The specials setting (#938) is read here, not inside the use case, so a switch reaches Watch Next on the next emission.
+    factory { WatchNextUseCase({ get() }, get(), get(), get(), get(), get<FeatureFlags>().countSpecialsTowardProgress) }
     factory { RefreshWatchNextCatalogsUseCase({ get() }, get()) }
 }

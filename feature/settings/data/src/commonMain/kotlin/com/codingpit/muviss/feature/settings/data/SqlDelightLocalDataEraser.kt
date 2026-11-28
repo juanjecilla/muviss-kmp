@@ -61,12 +61,16 @@ class SqlDelightLocalDataEraser(
     }
 
     private suspend fun eraseEverything() {
-        erasures.erase { eraseRows() }
         // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
         // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the
         // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
-        ownTmdbKey.clear()
-        secrets.clearAll()
+        // Both sit inside the fence with the rows: a key save or a fetch requested before this
+        // erase is then dropped by it, and cannot store its answer after the store is wiped (#1056).
+        erasures.erase {
+            eraseRows()
+            ownTmdbKey.clear()
+            secrets.clearAll()
+        }
         widgetRefresher.refresh()
         // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
         // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,

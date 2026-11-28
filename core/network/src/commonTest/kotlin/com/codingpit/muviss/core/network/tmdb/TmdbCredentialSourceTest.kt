@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
@@ -41,7 +42,7 @@ class TmdbCredentialSourceTest {
     private suspend fun ownKeyHolding(raw: String?): OwnTmdbKey {
         val store = InMemorySecretStore()
         if (raw != null) store.put(OwnTmdbKey.STORE_NAME, raw)
-        return OwnTmdbKey(store) { KeyCheck.Accepted }
+        return OwnTmdbKey(store, DataEraseFence()) { KeyCheck.Accepted }
     }
 
     @Test

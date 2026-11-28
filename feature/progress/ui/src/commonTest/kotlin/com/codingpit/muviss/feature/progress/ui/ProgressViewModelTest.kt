@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.progress.ui
 
 import app.cash.turbine.test
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
@@ -181,7 +182,7 @@ class ProgressViewModelTest {
         catalogSource: FakeEpisodeCatalogSource = FakeEpisodeCatalogSource(mapOf(show to seasons)),
         flags: FakeFeatureFlags = FakeFeatureFlags(),
     ): Pair<ProgressViewModel, EpisodeCatalogCache> {
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore(), DataEraseFence())
         val vm = ProgressViewModel(
             WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), cache, FakeClock(today)),
             TickEpisodeUseCase(ToggleEpisodeSeenUseCase(progressRepository), CompletionDetector.None),

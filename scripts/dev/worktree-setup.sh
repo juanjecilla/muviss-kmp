@@ -154,8 +154,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# A run killed by SIGKILL skips the trap and leaves its temp file behind (#1021).
+# Temp names carry a script-owned `tmp.` infix, so only those are removed, and only
+# regular files: a user's own `.local.properties.backup` is never matched.
+find "$here" -maxdepth 1 -name '.local.properties.tmp.??????' -type f -exec rm -f {} +
+
 # mktemp creates the file 0600 whatever the umask.
-tmp="$(mktemp "$here/.local.properties.XXXXXX")"
+tmp="$(mktemp "$here/.local.properties.tmp.XXXXXX")"
 cp "$source" "$tmp"
 chmod 600 "$tmp"
 
