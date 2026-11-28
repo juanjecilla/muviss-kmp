@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -50,7 +52,9 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoSideInsets
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveSideInsets
 import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -150,7 +154,7 @@ fun EpisodeDetailScreen(
 }
 
 @Composable
-private fun EpisodeBody(
+internal fun EpisodeBody(
     details: EpisodeDetails,
     state: EpisodeDetailUiState,
     onWatchedAgain: () -> Unit,
@@ -158,14 +162,26 @@ private fun EpisodeBody(
     onClearHistory: () -> Unit,
     onOpenImage: (ImageKind, String) -> Unit,
     onOpenPerson: ((PersonId) -> Unit)?,
+    // The still follows the Image Viewer into the side bands of a landscape cutout (#1089). A parameter because Skiko
+    // reports zero insets: tests pass a synthetic cutout.
+    horizontalInsets: WindowInsets = immersiveSideInsets(),
 ) {
     val scroll = rememberScrollState()
+    // The scrolling column clips what it draws, so it runs into the side bands itself and pads its text back inside
+    // the safe area, as DetailList does; only the still draws into the bands (#1089).
+    val sides = sideBandsOf(horizontalInsets)
     Column(
-        Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = MuvissSpacing.bottomContent),
+        Modifier
+            .fillMaxSize()
+            .extendIntoSideInsets(left = sides.left, right = sides.right)
+            .verticalScroll(scroll)
+            .padding(bottom = MuvissSpacing.bottomContent),
     ) {
-        EpisodeStill(details, onOpenImage)
+        EpisodeStill(details, onOpenImage, sideBands = sides.left + sides.right)
         Column(
-            Modifier.padding(horizontal = MuvissSpacing.l).padding(top = MuvissSpacing.m),
+            Modifier
+                .padding(start = sides.start + MuvissSpacing.l, end = sides.end + MuvissSpacing.l)
+                .padding(top = MuvissSpacing.m),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         ) {
             Text(
@@ -173,7 +189,7 @@ private fun EpisodeBody(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(details.name, style = MaterialTheme.typography.headlineSmall)
+            Text(details.name, Modifier.testTag(EPISODE_TITLE_TAG), style = MaterialTheme.typography.headlineSmall)
             EpisodeMetadataLine(details)
 
             details.overview?.let {
@@ -188,10 +204,17 @@ private fun EpisodeBody(
     }
 }
 
+/** Test tags of the still and the title under it, for layout checks (#1089). */
+internal const val EPISODE_STILL_TAG = "episodeStill"
+internal const val EPISODE_TITLE_TAG = "episodeTitle"
+
 @Composable
 private fun EpisodeStill(
     details: EpisodeDetails,
     onOpenImage: (ImageKind, String) -> Unit,
+    // The cutout bands the still runs into (#1089). The width includes them, the 16:9 height does not: the frame stays
+    // the height it had inside the safe area, so the title below it does not move.
+    sideBands: Dp = 0.dp,
     // The still draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
     topInset: Dp = immersiveTopPadding(),
@@ -200,7 +223,8 @@ private fun EpisodeStill(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(maxWidth * 9f / 16f + topInset)
+                .height((maxWidth - sideBands) * 9f / 16f + topInset)
+                .testTag(EPISODE_STILL_TAG)
                 .trackImmersiveArtwork()
                 .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Detail), ImageKind.Still, onOpenImage)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),

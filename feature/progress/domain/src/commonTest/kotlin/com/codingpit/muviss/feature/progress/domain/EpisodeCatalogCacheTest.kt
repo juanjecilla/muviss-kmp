@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.test.runTest
@@ -25,10 +26,34 @@ class EpisodeCatalogCacheTest {
     private val show2 = MediaId.tmdbTv("2")
 
     @Test
+    fun a_batch_fetched_across_delete_all_data_stores_nothing_after_it() = runTest {
+        // One batch of four, erased during each title's fetch in turn. The batch takes its erase count once, before
+        // its first request (#1090), so a title asked after the erase is dropped with the rest, not written.
+        val shows = (1..4).map { MediaId.tmdbTv("$it") }
+        for (erasedDuring in shows) {
+            val fence = DataEraseFence()
+            val store = InMemoryEpisodeCatalogStore()
+            val source = object : EpisodeCatalogSource {
+                override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
+                    if (mediaId == erasedDuring) fence.erase {}
+                    return Result.success(listOf(Season(1, "Season 1", emptyList())))
+                }
+            }
+            val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, fence)
+
+            cache.loadMissing(shows)
+
+            val kept = shows.takeWhile { it != erasedDuring }.toSet()
+            assertEquals(kept, cache.catalogs.value.keys, "titles asked after Delete all data in the same batch are not shown (erase during $erasedDuring)")
+            assertEquals(kept, store.load(shows).keys, "nor stored, where they would re-create the deleted rows (erase during $erasedDuring)")
+        }
+    }
+
+    @Test
     fun loadMissing_fetches_only_ids_not_already_cached() = runTest {
         val source = FakeEpisodeCatalogSource()
         val store = InMemoryEpisodeCatalogStore()
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(show1))
         cache.loadMissing(listOf(show1, show2))
@@ -43,7 +68,7 @@ class EpisodeCatalogCacheTest {
         val store = InMemoryEpisodeCatalogStore()
         val seasons = listOf(Season(1, "Season 1", emptyList()))
         source.seasonsById = mapOf(show1 to seasons)
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(show1))
 
@@ -54,7 +79,7 @@ class EpisodeCatalogCacheTest {
     fun refresh_refetches_every_currently_cached_id_by_default() = runTest {
         val source = FakeEpisodeCatalogSource()
         val store = InMemoryEpisodeCatalogStore()
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
         cache.loadMissing(listOf(show1, show2))
 
         cache.refresh()
@@ -67,7 +92,7 @@ class EpisodeCatalogCacheTest {
     fun refresh_with_explicit_ids_only_refetches_those() = runTest {
         val source = FakeEpisodeCatalogSource()
         val store = InMemoryEpisodeCatalogStore()
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
         cache.loadMissing(listOf(show1, show2))
 
         cache.refresh(listOf(show1))
@@ -81,7 +106,7 @@ class EpisodeCatalogCacheTest {
         val source = FakeEpisodeCatalogSource()
         val seasons = listOf(Season(1, "Season 1", emptyList()))
         val store = InMemoryEpisodeCatalogStore(mapOf(show1 to seasons))
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(show1))
 
@@ -95,7 +120,7 @@ class EpisodeCatalogCacheTest {
         val seasons = listOf(Season(1, "Season 1", emptyList()))
         source.seasonsById = mapOf(show1 to seasons)
         val store = InMemoryEpisodeCatalogStore()
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(show1))
 
@@ -106,7 +131,7 @@ class EpisodeCatalogCacheTest {
     fun loadMissing_fetches_only_the_ids_the_store_could_not_answer() = runTest {
         val source = FakeEpisodeCatalogSource()
         val store = InMemoryEpisodeCatalogStore(mapOf(show1 to listOf(Season(1, "Season 1", emptyList()))))
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(show1, show2))
 
@@ -121,7 +146,7 @@ class EpisodeCatalogCacheTest {
         val fresh = listOf(Season(1, "Season 1", emptyList()), Season(2, "Season 2", emptyList()))
         source.seasonsById = mapOf(show1 to fresh)
         val store = InMemoryEpisodeCatalogStore(mapOf(show1 to stale))
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
         cache.loadMissing(listOf(show1))
 
         cache.refresh(listOf(show1))
@@ -140,7 +165,7 @@ class EpisodeCatalogCacheTest {
         val source = FakeEpisodeCatalogSource()
         val stored = listOf(Season(1, "Season 1", emptyList()))
         val store = InMemoryEpisodeCatalogStore(mapOf(show1 to stored))
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
         cache.loadMissing(listOf(show1))
         source.failing = true
 
@@ -166,7 +191,7 @@ class EpisodeCatalogCacheConcurrencyTest {
                 return Result.success(emptyList())
             }
         }
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore())
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore(), DataEraseFence())
         val shows = (1..100).map { MediaId.tmdbTv(it.toString()) }
 
         cache.refresh(shows)
@@ -181,7 +206,7 @@ class EpisodeCatalogCacheConcurrencyTest {
         val source = object : EpisodeCatalogSource {
             override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = if (mediaId == bad) Result.failure(IllegalStateException("offline")) else Result.success(emptyList())
         }
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore())
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore(), DataEraseFence())
 
         cache.refresh(listOf(MediaId.tmdbTv("1"), bad, MediaId.tmdbTv("3")))
 

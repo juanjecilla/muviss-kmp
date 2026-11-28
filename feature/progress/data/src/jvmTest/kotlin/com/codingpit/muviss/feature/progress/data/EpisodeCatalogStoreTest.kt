@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.progress.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.core.testing.FakeClock
@@ -130,14 +131,14 @@ class EpisodeCatalogStoreTest {
     @Test
     fun `the cache reads the store instead of the source once a catalog is stored`() = runTest {
         val source = RecordingCatalogSource(mapOf(got to seasonsOf(got)))
-        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
 
         cache.loadMissing(listOf(got))
         assertEquals(listOf(got), source.fetched)
 
         // A second cache stands in for the next app launch: memory is cold,
         // the database is not.
-        val nextLaunch = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store)
+        val nextLaunch = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), store, DataEraseFence())
         nextLaunch.loadMissing(listOf(got))
 
         assertEquals(listOf(got), source.fetched, "the catalog survived the process, so nothing had to be fetched again")

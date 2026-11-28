@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.nextpick.data
 import com.codingpit.muviss.core.network.DiscoverFilters
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickMood
 import com.codingpit.muviss.feature.nextpick.api.PickSource
@@ -147,5 +148,18 @@ class DiscoverSourceTest {
 
         assertEquals(emptySet(), catalogue.filters.getValue(MediaType.MOVIE).watchProviderIds)
         assertEquals(null, catalogue.filters.getValue(MediaType.MOVIE).watchRegion)
+    }
+
+    @Test
+    fun `the family filter uses the certification table of the device region`() = runTest {
+        val catalogue = RecordingCatalogue()
+        DiscoverSource(catalogue, { emptyLibrary }, { 2026 }, PickMuting { MutedGenres.NONE }, { FakeTasteProfile() }, { "ES" })
+            .gather(PickCriteria(company = PickCompany.FAMILY), PickContext(online = true))
+
+        val movies = catalogue.filters.getValue(MediaType.MOVIE)
+        assertEquals("ES", movies.certificationCountry)
+        assertEquals(setOf("A", "Ai", "7", "7i"), movies.certifications)
+        assertEquals("ES", catalogue.filters.getValue(MediaType.TV).certificationCountry)
+        assertEquals(setOf("ERI", "TP", "7"), catalogue.filters.getValue(MediaType.TV).certifications)
     }
 }

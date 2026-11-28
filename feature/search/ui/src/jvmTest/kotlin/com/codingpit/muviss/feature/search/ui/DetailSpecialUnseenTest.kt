@@ -26,6 +26,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -112,6 +113,7 @@ private fun SpecialUnseenUnderTest() {
         WatchProvidersUseCase(repo),
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         SpecialClock(),
+        countSpecials = flowOf(true),
     )
     MuvissTheme(darkTheme = false) {
         GoldenSurface {

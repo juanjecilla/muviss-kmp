@@ -57,7 +57,8 @@ object UpcomingEpisodesCalculator {
 
     fun group(shows: List<UpcomingShow>, todayEpochDay: Long): List<UpcomingGroup> {
         val rows = shows
-            .flatMap { show -> show.seasons.flatMap { it.episodes }.mapNotNull { episode -> show.toUpcomingEpisodeOrNull(episode, todayEpochDay) } }
+            // Specials are not announced as upcoming: they are never next and never counted (#938).
+            .flatMap { show -> show.seasons.filter { it.number >= 1 }.flatMap { it.episodes }.mapNotNull { episode -> show.toUpcomingEpisodeOrNull(episode, todayEpochDay) } }
             .sortedWith(compareBy({ it.airDateEpochDay }, { it.title }))
 
         return UpcomingBucket.entries

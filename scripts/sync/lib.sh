@@ -17,9 +17,13 @@ set -u
 # guess, so set MUVISS_DEVICE (e.g. MUVISS_DEVICE=emulator-5554) rather than
 # unplugging things. A phone plugged in for charging is enough to break these
 # scripts otherwise.
-adb_device_flag() {
+# Prints the serial to use, or nothing for adb's own default. Exits when the
+# choice is ambiguous; adb_ calls it with `|| exit 1`, because an exit inside a
+# command substitution would only leave the subshell and the adb call would run
+# anyway (#1023).
+adb_serial() {
   if [ -n "${MUVISS_DEVICE:-}" ]; then
-    echo "-s $MUVISS_DEVICE"
+    echo "$MUVISS_DEVICE"
     return
   fi
   local count
@@ -27,13 +31,22 @@ adb_device_flag() {
   if [ "$count" -gt 1 ]; then
     echo "More than one device is attached. Set MUVISS_DEVICE to one of:" >&2
     "$ADB" devices | grep -E '\sdevice$' | awk '{print "  " $1}' >&2
-    exit 1
+    return 1
   fi
   echo ""
 }
 
-# shellcheck disable=SC2086
-adb_() { "$ADB" $(adb_device_flag) "$@"; }
+# Runs adb against the chosen device. No array: this file runs under bash 3.2 on
+# macOS, where an empty "${arr[@]}" under set -u aborts.
+adb_() {
+  local serial
+  serial="$(adb_serial)" || exit 1
+  if [ -n "$serial" ]; then
+    "$ADB" -s "$serial" "$@"
+  else
+    "$ADB" "$@"
+  fi
+}
 
 # ---------------------------------------------------------------- database ---
 

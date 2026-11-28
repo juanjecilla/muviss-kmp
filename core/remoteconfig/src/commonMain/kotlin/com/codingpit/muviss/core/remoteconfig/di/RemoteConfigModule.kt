@@ -39,6 +39,7 @@ val remoteConfigModule: Module = module {
                 cache = SqlDelightConfigCache(get<MuvissDatabase>().remoteConfigCacheQueries),
                 defaults = defaults,
                 clock = get(),
+                erasures = get(),
             )
         }
     }
