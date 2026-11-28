@@ -20,6 +20,9 @@ import kotlinx.serialization.json.Json
  * the sync server has not seen. Ties keep the local row, so restoring the same
  * file twice changes nothing the second time.
  *
+ * A tombstone in the file is restored as one (#1074): a removal made on another device
+ * removes the row here too, unless this device changed it more recently.
+ *
  * After the rows, the same reconciliation a sync pull runs (`RemoteApplier`):
  * plays for un-ticked episodes are tombstoned, a tick with no play gets one,
  * and `airedEpisodes` is raised to the ticked count. A backup's ticks and its
@@ -42,9 +45,9 @@ class SqlDelightBackupRestorer(
         return BackupSummary(
             formatVersion = backup.formatVersion,
             exportedAtEpochMs = backup.exportedAtEpochMs,
-            titleCount = backup.collection.size,
+            titleCount = backup.collection.count { !it.deleted },
             episodeCount = backup.progress.count { it.seen },
-            listCount = backup.lists.size,
+            listCount = backup.lists.count { !it.deleted },
         )
     }
 
@@ -118,7 +121,7 @@ class SqlDelightBackupRestorer(
             addedAtEpochMs = row.addedAtEpochMs,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
             notificationsMuted = row.notificationsMuted,
             rating = row.rating?.toLong(),
             note = row.note,
@@ -156,7 +159,7 @@ class SqlDelightBackupRestorer(
             watchedAtEpochMs = row.watchedAtEpochMs,
             updatedAtEpochMs = stamp,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }
@@ -174,7 +177,7 @@ class SqlDelightBackupRestorer(
             resolved = row.resolved,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
             createdEntry = row.createdEntry,
             entryAddedAtEpochMs = row.entryAddedAtEpochMs,
             tickedEpisodeIds = row.tickedEpisodeIds,
@@ -196,7 +199,7 @@ class SqlDelightBackupRestorer(
             dueAtEpochDay = row.dueAtEpochDay,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }
@@ -204,7 +207,8 @@ class SqlDelightBackupRestorer(
     /**
      * Per-row last-write-wins on the item's stamp, like every other row here. A
      * restored item is written dirty so the next sync carries it to the account, and
-     * a local tombstone newer than the file keeps the item removed.
+     * a local tombstone newer than the file keeps the item removed, and a tombstone
+     * in the file removes an older live item here (#1070).
      */
     private suspend fun restoreTasteProfileItem(row: TasteProfileItemExport): Boolean {
         val local = database.tasteProfileQueries.selectById(row.id).awaitAsOneOrNull()
@@ -216,7 +220,7 @@ class SqlDelightBackupRestorer(
             label = row.label,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }
@@ -230,7 +234,7 @@ class SqlDelightBackupRestorer(
             createdAtEpochMs = row.createdAtEpochMs,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }
@@ -244,7 +248,7 @@ class SqlDelightBackupRestorer(
             addedAtEpochMs = row.addedAtEpochMs,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
-            deleted = false,
+            deleted = row.deleted,
         )
         return true
     }

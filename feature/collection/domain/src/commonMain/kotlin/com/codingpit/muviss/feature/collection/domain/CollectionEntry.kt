@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.collection.domain
 
+import com.codingpit.muviss.core.model.CountedProgress
+import com.codingpit.muviss.core.model.SpecialsCounting
 import com.codingpit.muviss.core.model.WatchProgress
 import com.codingpit.muviss.core.model.WatchStatusCalculator
 import com.codingpit.muviss.models.MediaId
@@ -52,15 +54,37 @@ data class CollectionEntry(
     /** EPIC 41 (ADR 0022). Null is "never answered", not "no". */
     val revisitWillingness: Boolean? = null,
     val coWatchPinned: Boolean = false,
+    /** Ticked specials that are also in the cached aired catalog, read at read time (#938). Zero when the setting is off. */
+    val specialsSeen: Int = 0,
+    /** Cached aired specials for this title (#938). Read at read time, never stored in the snapshot. */
+    val specialsAired: Int = 0,
+    /** The per-device "Count specials toward progress" setting (#938, ADR 0037), as the read saw it. */
+    val countSpecials: Boolean = false,
 ) {
     val mediaType: MediaType get() = mediaId.type
+
+    /** The seen and aired counts status and the Library's progress read, with specials counted only by choice (#938). */
+    val counted: CountedProgress
+        get() = SpecialsCounting.count(
+            regularSeen = seenEpisodes,
+            regularAired = airedEpisodes,
+            specialsSeen = specialsSeen,
+            specialsAired = specialsAired,
+            countSpecials = countSpecials,
+        )
+
+    /** Episodes seen, as status counts them (#938). Use this, not [seenEpisodes], wherever progress is shown. */
+    val countedSeen: Int get() = counted.seen
+
+    /** Episodes aired, as status counts them (#938). Use this, not [airedEpisodes], wherever progress is shown. */
+    val countedAired: Int get() = counted.aired
 
     val status: WatchStatus
         get() = WatchStatusCalculator.derive(
             WatchProgress(
                 mediaType = mediaType,
-                seenEpisodes = seenEpisodes,
-                airedEpisodes = airedEpisodes,
+                seenEpisodes = counted.seen,
+                airedEpisodes = counted.aired,
                 totalEpisodes = totalEpisodes,
                 productionStatus = productionStatus,
                 favorite = favorite,

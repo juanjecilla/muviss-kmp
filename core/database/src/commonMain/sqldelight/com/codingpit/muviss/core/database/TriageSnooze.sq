@@ -57,6 +57,13 @@ FROM triageSnooze
 WHERE deleted = 0
 ORDER BY dueAtEpochDay ASC, snoozedAtEpochMs ASC;
 
+-- Every row, tombstones included, for the data export (#1074): a backup carries a removal so a device still
+-- holding the live row removes it on restore. `selectAll` keeps filtering `deleted`.
+selectAllIncludingDeleted:
+SELECT *
+FROM triageSnooze
+ORDER BY dueAtEpochDay ASC, snoozedAtEpochMs ASC;
+
 -- The deck's due source. Oldest-due first, so a title that has been waiting
 -- longest is the one that comes back first when the batch is capped.
 selectDue:
