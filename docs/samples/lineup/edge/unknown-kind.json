@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "shelves": [
+    {
+      "id": "from-the-future",
+      "category": "editorial",
+      "title": {
+        "en": "Newer app only"
+      },
+      "source": {
+        "kind": "peopleRow"
+      }
+    },
+    {
+      "id": "still-renders",
+      "category": "charts",
+      "title": {
+        "en": "This one renders"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "trending_day",
+        "mediaType": "movie"
+      }
+    }
+  ]
+}

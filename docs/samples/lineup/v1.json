@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 1,
+  "shelves": [
+    {
+      "id": "halloween",
+      "category": "seasonal",
+      "title": {
+        "en": "Halloween night",
+        "es": "Noche de Halloween"
+      },
+      "activeFrom": "10-15",
+      "activeUntil": "11-01",
+      "yearly": true,
+      "source": {
+        "kind": "discover",
+        "mediaType": "movie",
+        "filters": {
+          "genreIds": [
+            "27"
+          ],
+          "keywordIds": [
+            3335
+          ],
+          "minVoteCount": 200,
+          "sort": "popularity"
+        }
+      }
+    },
+    {
+      "id": "thanksgiving",
+      "category": "seasonal",
+      "title": {
+        "en": "For Thanksgiving",
+        "es": "Para Acción de Gracias"
+      },
+      "activeFrom": "11-20",
+      "activeUntil": "11-30",
+      "yearly": true,
+      "regions": [
+        "US"
+      ],
+      "source": {
+        "kind": "discover",
+        "mediaType": "movie",
+        "filters": {
+          "keywordIds": [
+            4543
+          ],
+          "sort": "popularity"
+        }
+      }
+    },
+    {
+      "id": "christmas",
+      "category": "seasonal",
+      "title": {
+        "en": "Christmas films",
+        "es": "Cine de Navidad"
+      },
+      "activeFrom": "12-01",
+      "activeUntil": "12-26",
+      "yearly": true,
+      "source": {
+        "kind": "discover",
+        "mediaType": "movie",
+        "filters": {
+          "keywordIds": [
+            207317
+          ],
+          "minVoteCount": 300,
+          "sort": "popularity"
+        }
+      }
+    },
+    {
+      "id": "christmas-picks",
+      "category": "editorial",
+      "title": {
+        "en": "Our Christmas picks",
+        "es": "Nuestra selección navideña"
+      },
+      "activeFrom": "12-01",
+      "activeUntil": "01-06",
+      "yearly": true,
+      "source": {
+        "kind": "titles",
+        "items": [
+          {
+            "mediaType": "movie",
+            "tmdbId": 850
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 1585
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 771
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 772
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 8871
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 10719
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 508
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 11881
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 10437
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 5825
+          }
+        ]
+      }
+    },
+    {
+      "id": "for-you",
+      "category": "forYou",
+      "source": {
+        "kind": "builtin",
+        "name": "forYou"
+      }
+    },
+    {
+      "id": "person-of-the-week",
+      "category": "spotlight",
+      "title": {
+        "en": "Director of the week: Agnès Varda",
+        "es": "Directora de la semana: Agnès Varda"
+      },
+      "activeFrom": "2026-11-23",
+      "activeUntil": "2026-12-06",
+      "source": {
+        "kind": "person",
+        "personId": 6817,
+        "department": "Directing"
+      }
+    },
+    {
+      "id": "trending",
+      "category": "charts",
+      "title": {
+        "en": "Trending this week",
+        "es": "Tendencias de la semana"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "trending_week",
+        "mediaType": "movie"
+      }
+    },
+    {
+      "id": "on-the-air",
+      "category": "charts",
+      "title": {
+        "en": "On the air",
+        "es": "En emisión"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "on_the_air",
+        "mediaType": "tv"
+      }
+    },
+    {
+      "id": "movie-genres",
+      "category": "genres",
+      "source": {
+        "kind": "builtin",
+        "name": "movieGenres"
+      }
+    },
+    {
+      "id": "tv-genres",
+      "category": "genres",
+      "source": {
+        "kind": "builtin",
+        "name": "tvGenres"
+      }
+    },
+    {
+      "id": "classics",
+      "category": "editorial",
+      "title": {
+        "en": "Classics",
+        "es": "Clásicos"
+      },
+      "source": {
+        "kind": "discover",
+        "mediaType": "movie",
+        "filters": {
+          "releasedOnOrBefore": "1969-12-31",
+          "minVoteCount": 1000,
+          "sort": "rating"
+        }
+      }
+    },
+    {
+      "id": "editors-series",
+      "category": "editorial",
+      "title": {
+        "en": "Editor's selection",
+        "es": "Selección del editor"
+      },
+      "source": {
+        "kind": "titles",
+        "items": [
+          {
+            "mediaType": "tv",
+            "tmdbId": 1396
+          },
+          {
+            "mediaType": "tv",
+            "tmdbId": 87108
+          },
+          {
+            "mediaType": "tv",
+            "tmdbId": 19885
+          },
+          {
+            "mediaType": "tv",
+            "tmdbId": 1399
+          },
+          {
+            "mediaType": "tv",
+            "tmdbId": 66732
+          },
+          {
+            "mediaType": "movie",
+            "tmdbId": 129
+          }
+        ]
+      }
+    },
+    {
+      "id": "star-wars",
+      "category": "editorial",
+      "title": {
+        "en": "The Star Wars saga",
+        "es": "La saga Star Wars"
+      },
+      "source": {
+        "kind": "tmdbCollection",
+        "id": 10
+      }
+    },
+    {
+      "id": "marvel-list",
+      "category": "editorial",
+      "title": {
+        "en": "The Marvel Universe",
+        "es": "El universo Marvel"
+      },
+      "source": {
+        "kind": "tmdbList",
+        "id": 1
+      }
+    },
+    {
+      "id": "criterion",
+      "category": "editorial",
+      "title": {
+        "en": "The Criterion Collection"
+      },
+      "source": {
+        "kind": "titles",
+        "setRef": "sets/criterion-sample.json",
+        "sort": "spine"
+      }
+    },
+    {
+      "id": "criterion-channel",
+      "category": "editorial",
+      "title": {
+        "en": "On the Criterion Channel",
+        "es": "En Criterion Channel"
+      },
+      "regions": [
+        "US",
+        "CA"
+      ],
+      "source": {
+        "kind": "discover",
+        "mediaType": "movie",
+        "filters": {
+          "watchProviderIds": [
+            258
+          ],
+          "sort": "popularity"
+        }
+      }
+    },
+    {
+      "id": "popular-movies",
+      "category": "popular",
+      "source": {
+        "kind": "builtin",
+        "name": "popularMovies"
+      }
+    },
+    {
+      "id": "popular-tv",
+      "category": "popular",
+      "source": {
+        "kind": "builtin",
+        "name": "popularTv"
+      }
+    }
+  ]
+}

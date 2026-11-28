@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "shelves": [
+    {
+      "id": "new-year",
+      "category": "seasonal",
+      "title": {
+        "en": "New Year"
+      },
+      "activeFrom": "12-28",
+      "activeUntil": "01-05",
+      "yearly": true,
+      "source": {
+        "kind": "builtin",
+        "name": "popularMovies"
+      }
+    }
+  ]
+}

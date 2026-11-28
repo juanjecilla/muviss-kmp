@@ -110,12 +110,28 @@ An account whose Entitlement has ended. Its synced data is kept but out of reach
 _Avoid_: expired account, cancelled (cancelling is what the user does in the store; the Entitlement only lapses when the paid period runs out); deleted (that is what "Delete account" does, and only that).
 
 **Discover**:
-The browse screen a person lands on: popular titles, genres and "For you", beside the Triage entry. What people call "home". Its network sections are kept as a Discover Shelf so it opens offline.
+The browse screen a person lands on: a column of Shelves, beside the Triage entry. What people call "home".
 _Avoid_: home (a place on the screen, not a concept), feed (this product has none).
 
-**Discover Shelf**:
-One stored section of Discover (popular movies, a genre list, "For you") exactly as the source returned it, with the time it was fetched. Proposed (#724), not built. A cache: nobody authors it, a refetch always replaces it, it is neither synced nor exported, and Muted Genres are applied when it is read, not when it is stored. A first launch offline with nothing stored still shows the error. Distinct from a Snapshot (the user's saved row) and an EpisodeCatalog (a show's episodes).
-_Avoid_: snapshot, cache (as a name for the thing).
+**Shelf**:
+One titled row on Discover: seasonal, editor's picks, a Person's Filmography, a chart, "For you". Chosen for everyone by the Lineup, apart from what a Shelf Source derives from the person's own library. Muted Genres apply to every Shelf. Proposed, not built.
+_Avoid_: section, row (UI mechanics), collection (that is the user's library), list (a list is the user's own).
+
+**Shelf Source**:
+Where a Shelf's titles come from: picked titles, a query, a Person, a franchise, a chart, or something built in.
+_Avoid_: shelf type, provider (that is MetadataProvider or a streaming service).
+
+**Lineup**:
+The ordered set of Shelves Muviss publishes, changed without an app release. It says what to show and when; it holds no user data. Proposed, not built.
+_Avoid_: feed, config, layout.
+
+**Set**:
+A published list of titles too large to sit inside a Lineup, such as a distributor's catalogue. A Shelf Source can point at one.
+_Avoid_: collection (taken), catalog (that is EpisodeCatalog).
+
+**Shelf Copy**:
+One Shelf's content exactly as its source returned it, with the time it was fetched, kept so Discover opens offline. A cache: nobody authors it, a refetch always replaces it, it is neither synced nor exported, and Muted Genres are applied when it is read, not when it is stored. A first launch offline with nothing stored still shows the error. Distinct from a Snapshot (the user's saved row) and an EpisodeCatalog (a show's episodes).
+_Avoid_: snapshot, cache (as a name for the thing), Discover Shelf (its old name).
 
 **Triage**:
 Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on, plus Snoozed Titles that have come due.

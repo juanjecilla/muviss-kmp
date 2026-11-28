@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "shelves": [
+    {
+      "category": "charts",
+      "source": {
+        "kind": "chart",
+        "chart": "top_rated",
+        "mediaType": "movie"
+      }
+    },
+    {
+      "id": "no-source",
+      "category": "editorial",
+      "title": {
+        "en": "No source"
+      }
+    },
+    {
+      "id": "no-person-id",
+      "category": "spotlight",
+      "title": {
+        "en": "No person id"
+      },
+      "source": {
+        "kind": "person"
+      }
+    },
+    {
+      "id": "bad-date",
+      "category": "seasonal",
+      "title": {
+        "en": "Bad date"
+      },
+      "activeFrom": "13-40",
+      "activeUntil": "14-01",
+      "yearly": true,
+      "source": {
+        "kind": "builtin",
+        "name": "popularTv"
+      }
+    },
+    {
+      "id": "missing-set",
+      "category": "editorial",
+      "title": {
+        "en": "Missing set"
+      },
+      "source": {
+        "kind": "titles",
+        "setRef": "sets/does-not-exist.json"
+      }
+    },
+    {
+      "id": "still-renders",
+      "category": "charts",
+      "title": {
+        "en": "This one renders"
+      },
+      "source": {
+        "kind": "chart",
+        "chart": "trending_day",
+        "mediaType": "movie"
+      }
+    }
+  ]
+}
