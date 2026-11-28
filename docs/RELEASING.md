@@ -1684,3 +1684,10 @@ A second row, **Report a problem**, sits under **Request a feature** in Settings
 1. `TALLY_FORM_DEFINITION=scripts/feedback/tally-bug-report.json scripts/feedback/tally-form.sh create`, then `publish <id>` with the same variable set (publish re-sends the definition).
 2. `BUG_REPORT_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets, or the ConfigCat text setting **`bugReportUrl`**.
 3. Add the Actions secret `TALLY_BUG_REPORT_FORM_ID` so the Ops Bridge turns each report into an issue.
+
+## 14. Discover Lineup URL (EPIC 54, ADR 0040)
+
+Remote Config `lineupUrl` says where the Discover Lineup is published. **Nothing reads it yet** (#1132).
+
+- Compiled default: `LINEUP_URL` in `local.properties` / CI, else `https://muvissapp.com/lineup/v1.json`. `off` means the copy shipped in the app only; a blank value counts as unset.
+- ConfigCat: text setting **`lineupUrl`**. An `https://` URL replaces the default, `off` turns it off, anything else (including a missing setting) keeps the default.
