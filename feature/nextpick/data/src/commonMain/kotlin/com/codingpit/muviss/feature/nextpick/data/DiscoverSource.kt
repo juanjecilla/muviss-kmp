@@ -73,7 +73,7 @@ internal class DiscoverSource(
     private fun filtersFor(criteria: PickCriteria, type: MediaType, muted: MutedGenres, services: Set<Int>): DiscoverFilters {
         val runtime = runtimeBounds(criteria.runtime)
         val era = eraBounds(criteria.era)
-        val certification = criteria.company?.takeIf { it == PickCompany.FAMILY }?.let { FamilyCertifications.forRegion(null, type) }
+        val certification = criteria.company?.takeIf { it == PickCompany.FAMILY }?.let { FamilyCertifications.forRegion(region(), type) }
         return DiscoverFilters(
             genreIds = MoodGenres.genreIds(criteria.moods, type),
             excludedGenreIds = muted.forType(type),
