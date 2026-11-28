@@ -52,6 +52,8 @@ data class SettingsUiState(
     val triageDeckAnimations: Boolean = true,
     /** Tick feedback on Progress and Detail (EPIC 52). Narrows [animationsEnabled] like the deck switch. */
     val tickAnimations: Boolean = true,
+    /** Whether an aired special counts toward a show's progress on this device (#938, ADR 0037). Off by default. */
+    val countSpecialsTowardProgress: Boolean = false,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,
     /** Where the Feature Request row opens (ADR 0035), hidden fields included; null hides the row. */
@@ -112,6 +114,9 @@ class SettingsViewModel(
         featureFlags.tickAnimations
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
+        featureFlags.countSpecialsTowardProgress
+            .onEach { enabled -> _state.update { it.copy(countSpecialsTowardProgress = enabled) } }
+            .launchInReporting(viewModelScope)
 
         // The links read Remote Config and the device locale, never the settings, so a settings failure
         // does not end them and [retry] has nothing to restart.
@@ -158,6 +163,10 @@ class SettingsViewModel(
 
     fun onTickAnimationsToggled(enabled: Boolean) {
         viewModelScope.launchReporting { featureFlags.setTickAnimations(enabled) }
+    }
+
+    fun onCountSpecialsToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { featureFlags.setCountSpecialsTowardProgress(enabled) }
     }
 
     fun onThemeSelected(theme: AppTheme) {

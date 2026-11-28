@@ -363,7 +363,7 @@ private fun CollectionGrid(
 }
 
 /** Sage progress strip only while actively watching — watched/finished posters stay clean. */
-private fun CollectionEntry.watchingProgress(): Float? = if (status == WatchStatus.WATCHING && airedEpisodes > 0) seenEpisodes / airedEpisodes.toFloat() else null
+private fun CollectionEntry.watchingProgress(): Float? = if (status == WatchStatus.WATCHING && countedAired > 0) countedSeen / countedAired.toFloat() else null
 
 @Composable
 private fun CollectionFilter.label(): String = stringResource(

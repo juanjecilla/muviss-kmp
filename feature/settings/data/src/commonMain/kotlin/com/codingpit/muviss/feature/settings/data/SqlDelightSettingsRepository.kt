@@ -165,16 +165,16 @@ class SqlDelightSettingsRepository(
             formatVersion = MuvissDataExport.CURRENT_FORMAT_VERSION,
             appVersion = appVersion.versionName,
             exportedAtEpochMs = clock.nowEpochMs(),
-            collection = exportQueries.collection.selectAll().awaitAsList().map { it.toExport() },
+            collection = exportQueries.collection.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
             progress = exportQueries.progress.selectAll().awaitAsList().map { it.toExport() },
-            triage = exportQueries.triage.selectAll().awaitAsList().map { it.toExport() },
-            plays = exportQueries.plays.selectAll().awaitAsList().map { it.toExport() },
-            snoozes = exportQueries.snoozes.selectAll().awaitAsList().map { it.toExport() },
+            triage = exportQueries.triage.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
+            plays = exportQueries.plays.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
+            snoozes = exportQueries.snoozes.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
             lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
             settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
-            tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
+            tasteProfile = exportQueries.tasteProfile.selectAllIncludingDeleted().awaitAsList().map { it.toExport() },
             mutedGenreChoice = exportQueries.mutedGenreChoice.select().awaitAsOneOrNull()?.toExport(),
             mutedGenres = exportQueries.mutedGenres.selectAll().awaitAsList().map { it.toExport() },
         )
@@ -217,6 +217,7 @@ class SqlDelightSettingsRepository(
         notificationsMuted = notificationsMuted,
         rating = rating?.toInt(),
         note = note,
+        deleted = deleted,
     )
 
     private fun TriageDecisionRow.toExport(): TriageDecisionExport = TriageDecisionExport(
@@ -231,6 +232,7 @@ class SqlDelightSettingsRepository(
         createdEntry = createdEntry,
         entryAddedAtEpochMs = entryAddedAtEpochMs,
         tickedEpisodeIds = tickedEpisodeIds,
+        deleted = deleted,
     )
 
     private fun EpisodeProgressRow.toExport(): EpisodeProgressExport = EpisodeProgressExport(
@@ -248,6 +250,7 @@ class SqlDelightSettingsRepository(
         value = itemValue,
         label = label,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun EpisodePlayRow.toExport(): EpisodePlayExport = EpisodePlayExport(
@@ -255,6 +258,7 @@ class SqlDelightSettingsRepository(
         mediaId = mediaId,
         watchedAtEpochMs = watchedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun TriageSnoozeRow.toExport(): TriageSnoozeExport = TriageSnoozeExport(
@@ -267,6 +271,7 @@ class SqlDelightSettingsRepository(
         snoozedAtEpochMs = snoozedAtEpochMs,
         dueAtEpochDay = dueAtEpochDay,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun MediaListRow.toExport(): MediaListExport = MediaListExport(
@@ -274,6 +279,7 @@ class SqlDelightSettingsRepository(
         name = name,
         createdAtEpochMs = createdAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun ListEntryRow.toExport(): ListEntryExport = ListEntryExport(
@@ -281,6 +287,7 @@ class SqlDelightSettingsRepository(
         mediaId = mediaId,
         addedAtEpochMs = addedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
     )
 
     private fun AppSettingsRow.toExport(): SettingsExport = SettingsExport(

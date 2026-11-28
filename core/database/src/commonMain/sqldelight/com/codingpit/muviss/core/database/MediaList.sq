@@ -124,18 +124,18 @@ UPDATE listEntry
 SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
 WHERE listId = :listId AND deleted = 1 AND updatedAtEpochMs = :deletedAt;
 
--- Every live list and membership, unjoined — the data export (EPIC 29, #72).
+-- Every list and membership, unjoined — the data export (EPIC 29, #72).
 -- Not selectAllLists, whose entryCount join and filter are display rules.
+-- Tombstones included (#1074): a backup carries a deleted list so a device still holding it removes it on restore.
 selectAllListsForExport:
 SELECT *
 FROM mediaList
-WHERE deleted = 0
 ORDER BY createdAtEpochMs ASC;
 
+-- Tombstones included (#1074), for the same reason as `selectAllListsForExport`.
 selectAllEntriesForExport:
 SELECT *
 FROM listEntry
-WHERE deleted = 0
 ORDER BY listId, addedAtEpochMs ASC;
 
 selectDirtyLists:
