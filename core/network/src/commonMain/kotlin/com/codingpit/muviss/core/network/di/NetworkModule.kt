@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.di
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.network.MetadataLocale
@@ -29,7 +30,7 @@ val networkModule: Module = module {
     // No-op here; a host overrides it in debug builds only (#177). Koin's last
     // binding wins, so the host's module must load after this one.
     single<TmdbFailureTrace> { TmdbFailureTrace.None }
-    single { OwnTmdbKey(get<SecretStore>(), get<HttpClient>()) }
+    single { OwnTmdbKey(get<SecretStore>(), get<HttpClient>(), get<DataEraseFence>()) }
     single<MetadataProvider> {
         TmdbProvider(get<HttpClient>(), get<RemoteConfig>(), get<OwnTmdbKey>(), get<MetadataLocale>(), get<TmdbFailureTrace>())
     }

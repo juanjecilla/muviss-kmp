@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.progress.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -71,7 +72,7 @@ class ProgressScreenErrorCopyTest {
 private fun ProgressWithFailure(failure: Throwable) {
     val failingCollectionApi = FakeCollectionApi(emptyList(), failure = failure)
     val progressRepository = FakeProgressRepository()
-    val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val watchNextViewModel = ProgressViewModel(
         WatchNextUseCase({ failingCollectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, FakeClock(0L)),
         TickEpisodeUseCase(ToggleEpisodeSeenUseCase(progressRepository), CompletionDetector.None),
@@ -80,7 +81,7 @@ private fun ProgressWithFailure(failure: Throwable) {
     )
 
     val okCollectionApi = FakeUpcomingCollectionApi(emptyList())
-    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val upcomingViewModel = UpcomingViewModel(okCollectionApi, upcomingCache, FakeClock(0L))
 
     MuvissTheme(darkTheme = false) {

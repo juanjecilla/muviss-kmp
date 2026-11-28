@@ -24,7 +24,7 @@ val searchUiModule: Module = module {
     // The motion switch is a flow, which the constructor-reflecting DSL cannot supply on its own.
     viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get<FeatureFlags>().animationsEnabled) }
     viewModelOf(::DiscoverIntroViewModel)
-    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get(), get()), get(), get(), get(), get(), get<FeatureFlags>().tickAnimationsActive) }
+    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get(), get()), get(), get(), get(), get(), get<FeatureFlags>().tickAnimationsActive, get<FeatureFlags>().countSpecialsTowardProgress) }
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
     viewModel { (id: MediaId) -> NotificationNudgeViewModel(id, get(), get()) }
     viewModel { (id: EpisodeId) -> EpisodeDetailViewModel(id, get(), get(), get()) }

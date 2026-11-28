@@ -60,17 +60,27 @@ class TmdbKeyViewModel(
             // A store failure (Keystore, Keychain) throws out of saveKey; the
             // dialog is locked while `checking`, so it must be released anyway.
             var problem: TmdbKeyProblem? = TmdbKeyProblem.COULD_NOT_CHECK
+            var saved = false
             try {
                 problem = when (saveKey(raw)) {
-                    SaveTmdbKeyResult.SAVED -> null
+                    SaveTmdbKeyResult.SAVED -> {
+                        saved = true
+                        null
+                    }
+
                     SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
+
                     SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
+
                     SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+
+                    // Delete all data cleared the key mid-check: no error, and not "saved" either.
+                    SaveTmdbKeyResult.ERASED -> null
                 }
             } finally {
                 _state.update { it.copy(checking = false, problem = problem) }
             }
-            if (problem == null) onSaved()
+            if (saved) onSaved()
         }
     }
 

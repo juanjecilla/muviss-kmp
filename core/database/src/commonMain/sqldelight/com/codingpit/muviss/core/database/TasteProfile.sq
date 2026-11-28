@@ -14,7 +14,8 @@
 -- theirs. It is display text only and never part of the key.
 --
 -- Sync columns per ADR 0002. Deletes are SOFT, and every read filters
--- `deleted = 0`, for the same reason as `triageSnooze` (ADR 0023): a hard
+-- `deleted = 0` except the export, which carries the tombstones (#1070, the same
+-- exception as mutedGenre.selectAll), for the reason `triageSnooze` gives (ADR 0023): a hard
 -- delete leaves no timestamp for last-write-wins to compare, so the other
 -- device's copy would be pushed back and "unlike" would undo itself.
 CREATE TABLE tasteProfile (
@@ -30,12 +31,19 @@ CREATE TABLE tasteProfile (
 -- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
 CREATE INDEX tasteProfile_dirty ON tasteProfile(isDirty) WHERE isDirty = 1;
 
--- Every item the person has picked, for the editor, the Pick Session and
--- the export. Grouped by kind so the editor reads top to bottom.
+-- Every live item the person has picked, for the editor and the Pick Session.
+-- Grouped by kind so the editor reads top to bottom.
 selectAll:
 SELECT *
 FROM tasteProfile
 WHERE deleted = 0
+ORDER BY kind ASC, label ASC, itemValue ASC;
+
+-- Every row, tombstones included, for the export: a backup carries an unlike so a device that still
+-- holds the live copy removes it on restore (#1070, the same rule as mutedGenre.selectAll).
+selectAllIncludingDeleted:
+SELECT *
+FROM tasteProfile
 ORDER BY kind ASC, label ASC, itemValue ASC;
 
 -- Does not filter `deleted` — callers decide (mirrors triageSnooze.selectById).

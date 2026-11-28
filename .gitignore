@@ -7,6 +7,8 @@ build/
 
 # Local config / secrets
 local.properties
+# worktree-setup.sh's temp copy, left by a run that was killed (#1021)
+.local.properties.*
 *.local
 
 # Release signing (never commit a keystore, see docs/RELEASING.md)

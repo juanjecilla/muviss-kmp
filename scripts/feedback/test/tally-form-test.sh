@@ -9,6 +9,8 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; failures=$((failures + 1)); }
 expect_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1: expected '$3', got '$2'"; }
 
 bin="$(mktemp -d)"; log="$bin/calls.log"
+# The stub sources the shared file_mode (#1018) from an absolute path.
+FILE_MODE_LIB="$(cd "$(dirname "$0")/../.." && pwd)/lib/file-mode.sh"; export FILE_MODE_LIB
 # The stub records method, URL and body, and answers what CURL_STATUS / CURL_BODY say.
 cat > "$bin/curl" <<'STUB'
 #!/bin/bash
@@ -16,8 +18,7 @@ method=""; url=""; body=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method="$2"; shift ;;
-    # GNU stat first: on Linux `stat -f` is file-system mode and "succeeds" with no mode.
-    -H) case "$2" in @*) echo "HEADERFILE $(cat "${2#@}") $(stat -c %a "${2#@}" 2>/dev/null || stat -f %Lp "${2#@}")" >> "$CALLS_LOG" ;; *Authorization*) echo "ARGKEY" >> "$CALLS_LOG" ;; esac; shift ;;
+    -H) case "$2" in @*) . "$FILE_MODE_LIB"; echo "HEADERFILE $(cat "${2#@}") $(file_mode "${2#@}")" >> "$CALLS_LOG" ;; *Authorization*) echo "ARGKEY" >> "$CALLS_LOG" ;; esac; shift ;;
     --data-binary) body="$(cat "${2#@}")" ;;
     http*) url="$1" ;;
   esac

@@ -64,6 +64,9 @@ class AppSettingsFeatureFlags(
     // DEFAULT is on, and so is this fallback, so a read that loses a race with `ensureRow` shows the same answer.
     override val completionPromptEnabled: Flow<Boolean> = settings().map { row -> row?.completionPromptEnabled ?: true }
 
+    // Off when the row is missing: specials are not counted until the person asks, so a race with `ensureRow` must not count them.
+    override val countSpecialsTowardProgress: Flow<Boolean> = settings().map { row -> row?.countSpecialsTowardProgress ?: false }
+
     // Not a column: served to every install, so nothing local can write it.
     override val byokEnabled: Flow<Boolean> = remoteConfig.values.map { it.byokEnabled }.distinctUntilChanged()
 
@@ -114,6 +117,12 @@ class AppSettingsFeatureFlags(
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateCompletionPromptEnabled(enabled)
+        Unit
+    }
+
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateCountSpecialsTowardProgress(enabled)
         Unit
     }
 
