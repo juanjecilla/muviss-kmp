@@ -32,6 +32,10 @@ internal object TmdbMapper {
 
     const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
+    // Episode stills are stored at w300, a size TMDB lists for stills (/configuration: w92, w185, w300, original).
+    // w500 is not listed for them. Rows rewrite it to w185, and the hero to `original` (PosterSize.Still).
+    const val STILL_BASE = "https://image.tmdb.org/t/p/w300"
+
     // Provider logos render small (a couple dozen dp); w92 is TMDB's smallest
     // non-thumbnail size and keeps the "Where to watch" row light.
     const val LOGO_BASE = "https://image.tmdb.org/t/p/w92"
@@ -43,7 +47,7 @@ internal object TmdbMapper {
     // The Image Viewer pages through full-screen art. Each kind uses a size TMDB lists for it (see /configuration):
     // w1280 for backdrops and w780 for posters. Stills list only w92, w185, w300 and `original`, and w300 is smaller than
     // the w500 hero the person tapped, so a still is shown at `original`. It loads only when the viewer opens, and the
-    // hero keeps the smaller copy meanwhile.
+    // hero keeps the smaller copy meanwhile. The episode hero draws `original` too (PosterSize.Still), so it shares this copy.
     const val GALLERY_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
     const val GALLERY_POSTER_BASE = "https://image.tmdb.org/t/p/w780"
     const val GALLERY_STILL_BASE = "https://image.tmdb.org/t/p/original"
@@ -61,6 +65,8 @@ internal object TmdbMapper {
         .map { TitleImage(url = base + it.filePath, aspectRatio = it.aspectRatio.toFloat()) }
 
     fun imageUrl(path: String?): String? = path?.let { IMAGE_BASE + it }
+
+    fun stillUrl(path: String?): String? = path?.let { STILL_BASE + it }
 
     fun backdropUrl(path: String?): String? = path?.let { BACKDROP_BASE + it }
 
@@ -327,7 +333,7 @@ internal object TmdbMapper {
                 episodeNumber = ep.episodeNumber,
                 name = ep.name,
                 airDateEpochDay = airDateToEpochDay(ep.airDate),
-                stillUrl = imageUrl(ep.stillPath),
+                stillUrl = stillUrl(ep.stillPath),
                 runtimeMinutes = ep.runtime,
             )
         },
@@ -340,7 +346,7 @@ internal object TmdbMapper {
         episodeNumber = dto.episodeNumber,
         overview = dto.overview?.takeIf { it.isNotBlank() },
         airDateEpochDay = airDateToEpochDay(dto.airDate),
-        stillUrl = imageUrl(dto.stillPath),
+        stillUrl = stillUrl(dto.stillPath),
         runtimeMinutes = dto.runtime,
         // TMDB returns 0.0 for "nobody has voted", which would render as a
         // real score of zero rather than as an absence.

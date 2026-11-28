@@ -226,10 +226,10 @@ private fun EpisodeStill(
                 .height((maxWidth - sideBands) * 9f / 16f + topInset)
                 .testTag(EPISODE_STILL_TAG)
                 .trackImmersiveArtwork()
-                .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Detail), ImageKind.Still, onOpenImage)
+                .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Still), ImageKind.Still, onOpenImage)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
-            PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
+            PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize(), size = PosterSize.Still)
         }
     }
 }
