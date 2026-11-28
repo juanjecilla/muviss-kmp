@@ -90,8 +90,9 @@ class PickSessionViewModel(
     private var session: PickSession? = null
 
     /**
-     * Bumped whenever the screen moves on from the session it shows (a new session, an answer, or back). A pick
-     * started under an older value must not write its result, or it would overwrite the screen the person moved to.
+     * Bumped whenever the screen moves on from the session it shows: an answer or a skip, back, and a fresh
+     * [start] (before its reads, which suspend, and again once they land). A pick started under an older value
+     * must not write its result, or pool, or it would overwrite the screen the person moved to.
      */
     private var generation = 0
     private val previous = ArrayDeque<PickSession>()
@@ -117,6 +118,9 @@ class PickSessionViewModel(
     /** Starts a fresh session, reading the context and the result mode again. Used on open and by "Start again". */
     fun start() {
         viewModelScope.launchReporting {
+            // Bumped before the reads, which suspend: a pick still in flight from the old session must not land over
+            // Loading, or over Failed when a read fails. The bump after the reads catches picks started during them.
+            generation++
             _state.value = PickSessionUiState.Loading
             // The result mode is read here too, so a failed database read ends in Failed, not a spinner.
             val (opened, chosen) = try {
@@ -219,12 +223,15 @@ class PickSessionViewModel(
         try {
             // A pool that still holds enough unseen picks, or that already held everything the engine had, is reused.
             val cached = pool?.takeIf { held -> held.picks.count { it.candidate.id !in shown } >= count || held.picks.size < poolLimit }
-            val result = cached ?: run {
-                poolLimit = maxOf(POOL_SIZE, shown.size + count)
-                engine.pick(live.criteria, read, limit = poolLimit).also { pool = it }
-            }
-            // The person moved on while this pick was in flight (back, or a new session): its result is not theirs to show.
+            val limit = if (cached == null) maxOf(POOL_SIZE, shown.size + count) else poolLimit
+            val result = cached ?: engine.pick(live.criteria, read, limit = limit)
+            // The person moved on while this pick was in flight (back, or a new session): its result is not theirs to
+            // show, and it must not become the pool either, or a later "another" would draw from the old answers.
             if (started != generation) return
+            if (cached == null) {
+                pool = result
+                poolLimit = limit
+            }
             val next = result.picks.filter { it.candidate.id !in shown }.take(count)
             if (next.isEmpty()) {
                 _state.value = PickSessionUiState.NoPick(onlyMyServices = live.criteria.onlyMyServices)
