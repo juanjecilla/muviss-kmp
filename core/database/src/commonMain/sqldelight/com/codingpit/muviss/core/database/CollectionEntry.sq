@@ -231,8 +231,8 @@ WHERE mediaId = :mediaId AND deleted = 0
     OR posterUrl IS NOT :posterUrl
     OR releaseYear IS NOT :releaseYear
     OR productionStatus IS NOT :productionStatus
-    OR totalEpisodes IS NOT MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
-    OR airedEpisodes IS NOT MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
+    OR totalEpisodes IS NOT MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0)))
+    OR airedEpisodes IS NOT MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0)))
     OR genres IS NOT :genres
     OR runtimeMinutes IS NOT :runtimeMinutes);
 
