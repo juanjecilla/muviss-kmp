@@ -103,6 +103,7 @@ Across the pool the lowest lightest-backdrop ratio is 5.73:1, the median is
 Re-run 2026-11-26 (#469), with the same fetch script and the same two TMDB lists, which have moved since:
 117 posters. Lightest backdrop: lowest 5.73:1, median 10.05:1, highest 14.01:1. **None falls below 4.5:1.**
 The floor is the same #4C4C4C white backdrop, and the pure-black ceiling is unchanged.
+The destination was a new folder outside the repo, created by that run, so it was empty before the fetch. The fetch ran `scripts/a11y/fetch-rating-badge-posters.sh <new empty folder> 60 popular`, then the same with `60 top_rated`, into the same folder. The run's fetch log shows 117 files downloaded: 3 of the 120 titles were on both lists. The test ran with `MUVISS_POSTER_DIR` set to that folder.
 
 **Lightest set**: the five lowest lightest-backdrop ratios. They were chosen
 from the ranking, not by whole-poster brightness, because only the region under
