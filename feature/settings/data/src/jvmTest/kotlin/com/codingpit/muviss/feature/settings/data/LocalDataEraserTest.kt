@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
+import com.codingpit.muviss.core.network.tmdb.SaveOwnKeyResult
 import com.codingpit.muviss.core.sync.NoOpSyncBackend
 import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -26,18 +27,23 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** EPIC 29 (#72): Settings > Delete all data leaves a fresh install behind. */
@@ -73,8 +79,9 @@ class LocalDataEraserTest {
         database.triageDeckCursorQueries.upsert("movie|any|-|en-US", 2L, 2L, 2L, 2L, 1L)
         database.discoverCacheQueries.upsert(cacheKey = "genres:tv|en-US", json = "[]", fetchedAtEpochMs = 1L)
         database.forYouCacheQueries.upsert(cacheKey = "foryou:0000000000000001", json = "{}")
+        val erasures = DataEraseFence()
         val secrets = InMemorySecretStore()
-        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures)
         secrets.put(OwnTmdbKey.STORE_NAME, "c".repeat(32))
         secrets.put("something-else", "x")
 
@@ -86,7 +93,7 @@ class LocalDataEraserTest {
             secrets,
             widgetRefresher = WidgetRefresher { widgetRefreshes++ },
             syncBackend = NoOpSyncBackend(),
-            erasures = DataEraseFence(),
+            erasures = erasures,
         ).deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
@@ -122,8 +129,9 @@ class LocalDataEraserTest {
             AppVersion("1", 1L),
             writes,
         )
+        val erasures = DataEraseFence()
         val secrets = InMemorySecretStore()
-        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures)
 
         // The tap parks at the hop to io; Delete all data then runs to completion before it lands.
         launch(start = CoroutineStart.UNDISPATCHED) { repository.setDeviceBackupEnabled(true) }
@@ -135,7 +143,7 @@ class LocalDataEraserTest {
             writes,
             widgetRefresher = WidgetRefresher {},
             syncBackend = NoOpSyncBackend(),
-            erasures = DataEraseFence(),
+            erasures = erasures,
         ).deleteAllData()
         advanceUntilIdle()
 
@@ -220,6 +228,38 @@ class LocalDataEraserTest {
         assertEquals(true, erasures.write(erasures.request()) {}, "a request begun after the erase is not fenced off")
     }
 
+    @Test
+    fun `a key save held across deleting everything is not stored by it`() = runTest {
+        val database = inMemoryDatabase()
+        val erasures = DataEraseFence()
+        val secrets = InMemorySecretStore()
+        val answer = CompletableDeferred<Unit>()
+        val tmdb = HttpClient(
+            MockEngine {
+                answer.await()
+                respond("{}", HttpStatusCode.OK)
+            },
+        )
+        val ownKey = OwnTmdbKey(secrets, tmdb, erasures)
+
+        // TMDB is still answering when Delete all data runs through the real eraser.
+        val saving = async { ownKey.save("b".repeat(32)) }
+        runCurrent()
+        SqlDelightLocalDataEraser(
+            database,
+            dispatchers,
+            ownKey,
+            secrets,
+            widgetRefresher = WidgetRefresher {},
+            syncBackend = NoOpSyncBackend(),
+            erasures = erasures,
+        ).deleteAllData()
+        answer.complete(Unit)
+
+        assertNotEquals(SaveOwnKeyResult.Saved, saving.await(), "a key checked before the erase is not reported as saved")
+        assertNull(secrets.get(OwnTmdbKey.STORE_NAME), "nor stored after the erase wiped the store")
+    }
+
     private fun eraser(
         database: MuvissDatabase,
         backend: SyncBackend,
@@ -228,7 +268,7 @@ class LocalDataEraserTest {
     ) = SqlDelightLocalDataEraser(
         database,
         dispatchers,
-        OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
+        OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures),
         InMemorySecretStore(),
         widgetRefresher = WidgetRefresher {},
         syncBackend = backend,

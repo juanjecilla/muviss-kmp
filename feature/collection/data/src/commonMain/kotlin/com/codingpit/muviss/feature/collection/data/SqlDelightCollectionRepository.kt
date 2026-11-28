@@ -7,6 +7,8 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
@@ -17,7 +19,10 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -37,20 +42,42 @@ import kotlin.math.roundToInt
  * export, this reads the shared table rather than the progress feature's
  * `:api`: a count over `:core:database`'s rows, not progress's domain.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SqlDelightCollectionRepository(
     private val queries: CollectionEntryQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
 ) : CollectionRepository {
 
-    override fun observeAll(): Flow<List<CollectionEntry>> = queries.selectAllWithSeen(::entryOf)
-        .asFlow()
-        .mapToList(dispatchers.io)
+    // The day an episode counts as aired for the specials counts (#938). Fixed per subscription, as the aired counts are
+    // fixed at write time; the Flow re-runs on every table this query reads, so a tick or a setting change refreshes it.
+    // The aired day is the day an episode counts as aired for the specials counts (#938). Each query re-runs when the
+    // local day changes (#951), so a special that airs at midnight is counted without waiting for a write.
+    override fun observeAll(): Flow<List<CollectionEntry>> = localDays().flatMapLatest { today ->
+        queries.selectAllWithSeen(today, ::entryOf)
+            .asFlow()
+            .mapToList(dispatchers.io)
+    }
 
-    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = queries.selectByIdWithSeen(mediaId.toString(), ::visibleEntryOf)
-        .asFlow()
-        .mapToOneOrNull(dispatchers.io)
-        .map { it?.entry }
+    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = localDays().flatMapLatest { today ->
+        queries.selectByIdWithSeen(today, mediaId.toString(), ::visibleEntryOf)
+            .asFlow()
+            .mapToOneOrNull(dispatchers.io)
+            .map { it?.entry }
+    }
+
+    /**
+     * The local epoch day now, then again at each local midnight. Re-emits only when the day changes, so a subscriber
+     * pays one extra query per day rather than one per second.
+     */
+    private fun localDays(): Flow<Long> = flow {
+        while (true) {
+            val now = clock.nowEpochMs()
+            val today = clock.todayEpochDay()
+            emit(today)
+            delay((nextLocalMidnightMs(clock, now, today) - now).coerceAtLeast(1L))
+        }
+    }
 
     override suspend fun upsertSnapshot(details: MediaDetails) = withContext(dispatchers.io) {
         val id = details.summary.id.toString()
@@ -188,6 +215,9 @@ class SqlDelightCollectionRepository(
         revisitWillingness: Boolean?,
         coWatchPinned: Boolean,
         seenCount: Long,
+        specialsSeen: Long,
+        specialsAired: Long,
+        countSpecials: Long,
     ): Visible = Visible(
         entry = if (deleted) {
             null
@@ -196,6 +226,7 @@ class SqlDelightCollectionRepository(
                 mediaId, mediaType, title, posterUrl, releaseYear, productionStatus, totalEpisodes, airedEpisodes,
                 favorite, genres, runtimeMinutes, addedAtEpochMs, updatedAtEpochMs, isDirty, deleted,
                 notificationsMuted, rating, note, revisitWillingness, coWatchPinned, seenCount,
+                specialsSeen, specialsAired, countSpecials,
             )
         },
     )
@@ -223,6 +254,9 @@ class SqlDelightCollectionRepository(
         revisitWillingness: Boolean?,
         coWatchPinned: Boolean,
         seenCount: Long,
+        specialsSeen: Long,
+        specialsAired: Long,
+        countSpecials: Long,
     ): CollectionEntry = CollectionEntry(
         mediaId = MediaId.parse(mediaId),
         title = title,
@@ -237,6 +271,9 @@ class SqlDelightCollectionRepository(
         favorite = favorite,
         addedAtEpochMs = addedAtEpochMs,
         seenEpisodes = seenCount.toInt(),
+        specialsSeen = specialsSeen.toInt(),
+        specialsAired = specialsAired.toInt(),
+        countSpecials = countSpecials != 0L,
         genres = genres.toGenreList(),
         runtimeMinutes = runtimeMinutes?.toInt(),
         notificationsMuted = notificationsMuted,
@@ -258,7 +295,32 @@ private fun String.toGenreList(): List<String> = if (isBlank()) emptyList() else
  */
 private fun MediaDetails.estimatedRuntimeMinutes(): Int? = when (type) {
     MediaType.MOVIE -> runtimeMinutes
-    MediaType.TV -> seasons.flatMap { it.episodes }.mapNotNull { it.runtimeMinutes }.averageOrNull()
+
+    // Regular seasons only, like every snapshot count: a special's runtime is not the show's (#938).
+    MediaType.TV -> seasons.filter { it.number >= 1 }.flatMap { it.episodes }.mapNotNull { it.runtimeMinutes }.averageOrNull()
 }
 
 private fun List<Int>.averageOrNull(): Int? = if (isEmpty()) null else (sum().toDouble() / size).roundToInt()
+
+/**
+ * The instant the local day after [today] begins, for the wake-up of [localDays] (#951). It is the local midnight, read
+ * with the offset in force at that midnight rather than at [nowMs]: a switch between the two moves it. When the clock
+ * jumps over the midnight itself (a gap, so no midnight exists), the day begins at the jump. That instant is found by
+ * search, not guessed, so the wake-up is never late and never a spin.
+ */
+internal fun nextLocalMidnightMs(clock: AppClock, nowMs: Long, today: Long): Long {
+    val tomorrow = epochMsAtStartOfDay(today + 1)
+    val firstGuess = tomorrow - clock.utcOffsetMsAt(nowMs)
+    val midnight = tomorrow - clock.utcOffsetMsAt(firstGuess)
+    if (clock.localEpochDayOf(midnight) > today) return midnight
+
+    // The midnight is in a gap. The new day starts at the first instant after now whose local day has advanced.
+    var lo = nowMs
+    var hi = maxOf(firstGuess, nowMs + 1)
+    if (clock.localEpochDayOf(hi) <= today) return hi
+    while (hi - lo > 1) {
+        val mid = lo + (hi - lo) / 2
+        if (clock.localEpochDayOf(mid) > today) hi = mid else lo = mid
+    }
+    return hi
+}

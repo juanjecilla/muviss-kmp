@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
+import com.codingpit.muviss.core.sync.NoOpTitleRefresher
 import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -19,6 +20,7 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTiming
+import com.codingpit.muviss.core.sync.TitleRefresher
 import com.codingpit.muviss.core.sync.supabase.createSupabaseSyncBackend
 import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
@@ -108,6 +110,12 @@ internal class SyncApp(
                 }
                 single<EntitlementProvider> { entitlements }
                 if (remoteConfig != null) single<RemoteConfig> { remoteConfig }
+                // A pull that touches a title hands it to the collection bridge, which refetches its
+                // metadata from TMDB over the network. Its continuation then resumes on an HTTP thread while
+                // the test thread drives the UnconfinedTestDispatcher: the race behind #1045. No sync test
+                // here asserts on metadata, so the refresh is switched off at the seam. This fixture's module is
+                // appended after `appModules`, so its binding wins over `collectionSyncBridgeModule`.
+                single<TitleRefresher> { NoOpTitleRefresher }
                 single<SyncBackend> {
                     createSupabaseSyncBackend(
                         client = HttpClient(server.engine) {

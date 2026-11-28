@@ -442,6 +442,24 @@ class TriageUndoLedgerTest {
     }
 
     @Test
+    fun a_pre_stamp_claim_retried_against_a_replacement_leaves_the_replacement_alone() = runTest {
+        val h = harness(endedDetails)
+        // A row written before the stamp column: it claims an entry but has no stamp to prove which entry that is.
+        h.repository.record(TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true))
+        // The person's entry is in the library when the retry runs, and it may be a replacement the person added.
+        h.collection.add(endedDetails)
+
+        h.record.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        // The claim cannot name the entry, so the retry retires it rather than adopting the present entry's stamp.
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).createdEntry)
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertTrue(h.entryPresent(endedShow.id), "undo must not remove an entry the verdict did not claim")
+        assertEquals(emptyList(), h.collection.removed)
+    }
+
+    @Test
     fun a_retry_after_the_entry_was_removed_and_nothing_re_added_claims_the_entry_its_add_makes() = runTest {
         val h = harness(endedDetails)
         h.record(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()

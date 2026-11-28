@@ -51,7 +51,22 @@ class PosterSizeTest {
     }
 
     @Test
-    fun the_three_size_classes_ask_for_ascending_widths() {
-        assertEquals(listOf(185, 342, 500), PosterSize.entries.map { it.tmdbWidth })
+    fun the_poster_size_classes_ask_for_ascending_widths() {
+        assertEquals(listOf("w185", "w342", "w500"), listOf(PosterSize.Thumbnail, PosterSize.Grid, PosterSize.Detail).map { it.tmdbSegment })
+    }
+
+    @Test
+    fun a_stored_w300_still_is_rewritten_to_w185_for_a_row_and_to_original_for_the_hero() {
+        val still = "https://image.tmdb.org/t/p/w300/still.jpg"
+        assertEquals("https://image.tmdb.org/t/p/w185/still.jpg", sizedImageUrl(still, PosterSize.Thumbnail))
+        assertEquals("https://image.tmdb.org/t/p/original/still.jpg", sizedImageUrl(still, PosterSize.Still))
+    }
+
+    @Test
+    fun a_stored_w500_still_from_an_older_catalog_is_rewritten_to_original_for_the_hero() {
+        assertEquals(
+            "https://image.tmdb.org/t/p/original/still.jpg",
+            sizedImageUrl("https://image.tmdb.org/t/p/w500/still.jpg", PosterSize.Still),
+        )
     }
 }

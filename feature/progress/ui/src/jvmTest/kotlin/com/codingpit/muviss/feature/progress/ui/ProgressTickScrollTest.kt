@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -144,7 +145,7 @@ private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolea
     val collectionApi = FakeCollectionApi(
         ids.mapIndexed { index, id -> CollectionSummary(id, "Show ${index + 1}", posterUrl = null, status = WatchStatus.WATCHING) },
     )
-    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(catalogs)), InMemoryEpisodeCatalogStore())
+    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(catalogs)), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val flags = FakeFeatureFlags().apply { this.tickAnimations.value = tickAnimations }
     val watchNext = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), ObserveLastWatchedAtUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
@@ -152,7 +153,7 @@ private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolea
         cache,
         flags,
     )
-    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
+    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val upcoming = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
     MuvissTheme(darkTheme = false) {
         ProgressScreen(watchNextViewModel = watchNext, upcomingViewModel = upcoming, onOpenDetail = {}, onOpenCoWatch = null, onOpenNextPick = onOpenNextPick)

@@ -29,6 +29,8 @@ kotlin {
             implementation(projects.feature.progress.data)
             // `CountingDriver` — the Library's query budget (EPIC 28, #70).
             implementation(projects.core.testing)
+            // `CountedProgress`, the read-time specials counts the specials integration test asserts on (#938).
+            implementation(projects.core.model)
         }
     }
 }

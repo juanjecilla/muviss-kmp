@@ -101,6 +101,18 @@ class SqlDelightProgressRepositoryTest {
     }
 
     @Test
+    fun observeSeenCount_leaves_out_a_seen_special() = runTest {
+        // The count feeds WatchStatusCalculator against the regular snapshot, so a special tick must not add to it (#938).
+        repository.setSeen(ep1, true)
+        repository.setSeen(EpisodeId(show, 0, 1), true)
+
+        repository.observeSeenCount(show).test {
+            assertEquals(1, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun observeSeenCount_is_zero_for_an_untouched_media() = runTest {
         repository.observeSeenCount(MediaId.tmdbTv("999")).test {
             assertEquals(0, awaitItem())

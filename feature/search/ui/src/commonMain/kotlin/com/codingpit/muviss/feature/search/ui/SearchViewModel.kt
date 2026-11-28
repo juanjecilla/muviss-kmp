@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 
 /** Which content [SearchUiState] is currently showing below the search field. */
 enum class SearchMode {
@@ -157,6 +158,16 @@ class SearchViewModel(
      * flag it cleared on the way out would clear the newer load's mark too (#965).
      */
     private var discoverLoads = 0
+
+    /**
+     * The Discover load the person's Retry arrived during (#980). The load is not restarted: its single TMDB request is
+     * the one that answers, and its outcome follows the user-initiated rule, as if it had been the person's own load.
+     * Held by identity, so only that load can take it: a load cancelled before its refresh never hands it to a later one.
+     */
+    private var userAskedDuringLoad: Job? = null
+
+    /** The most recently started Discover load, the one a Retry arriving now would land on (see [userAskedDuringLoad]). */
+    private var discoverJob: Job? = null
 
     /** For you requests in flight, forced or not (see [forYouFlow]). Counted for the same reason as [discoverLoads]. */
     private var forYouRequests = 0
@@ -370,15 +381,17 @@ class SearchViewModel(
     fun retry() {
         val s = _state.value
         if (s.mode == SearchMode.DISCOVER) {
-            // Not while a refresh is in flight: a second request would cancel the first and ask TMDB twice (#965).
+            // A Discover load in flight is not restarted: a second request would cancel the first and ask TMDB twice
+            // (#965). The Retry is recorded instead, and that load's outcome follows the person's request (#980).
             // An error on screen means Discover itself is idle, but For you may still be loading, so Discover's
             // part is retried then.
+            if (discoverLoads > 0) userAskedDuringLoad = discoverJob
             if (s.error == null && s.refreshing) return
             if (!s.forYouRequesting) {
                 forYouRetries++
                 forYouAgain.update { it + 1 }
             }
-            if (!s.discoverBusy) reload(userInitiated = true)
+            if (discoverLoads == 0) reload(userInitiated = true)
             return
         }
         reload(userInitiated = true)
@@ -455,15 +468,16 @@ class SearchViewModel(
             discoverLoads++
             publishInFlight()
             try {
-                loadDiscoverNow(forced, userInitiated, marks)
+                loadDiscoverNow(forced, userInitiated, marks, coroutineContext.job)
             } finally {
                 discoverLoads--
                 publishInFlight()
             }
         }
+        discoverJob = loadJob
     }
 
-    private suspend fun loadDiscoverNow(forced: Boolean, userInitiated: Boolean, marks: Int) {
+    private suspend fun loadDiscoverNow(forced: Boolean, userInitiated: Boolean, marks: Int, owner: Job) {
         // Everything the load reads or writes by its language, erase count and start time is captured first (#965).
         val run = discoverFeed.startRun()
         val mutedMovies = mutedFor(MediaType.MOVIE, null)
@@ -476,9 +490,16 @@ class SearchViewModel(
             _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = publishedBanner()) }
         }
         // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
-        if (!forced && !discoverFeed.needsRefresh(snapshot, run)) return
+        if (!forced && !discoverFeed.needsRefresh(snapshot, run)) {
+            takeUserAskedDuringLoad(owner)
+            return
+        }
 
         val refresh = discoverFeed.refresh(run, mutedMovies, mutedTv)
+        // A Retry that arrived while this load waited on TMDB counts as the person's own request (#980). It is taken
+        // before the combine, so an explicit refresh still clears it.
+        val askedDuringLoad = takeUserAskedDuringLoad(owner)
+        val askedByPerson = userInitiated || askedDuringLoad
         // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
         // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL, or when
         // the person asked for the refresh: they are told it failed even inside the TTL (#974).
@@ -489,7 +510,7 @@ class SearchViewModel(
         // automatic failure inside the TTL keeps whatever the person was already told (#974).
         if (!refresh.anyFailed) {
             discoverBanner = false
-        } else if (userInitiated || discoverFeed.isPastTtl(merged, run)) {
+        } else if (askedByPerson || discoverFeed.isPastTtl(merged, run)) {
             discoverBanner = true
         }
         _state.update {
@@ -500,6 +521,16 @@ class SearchViewModel(
             )
         }
         if (!refresh.anyFailed) settleStale(marks)
+    }
+
+    /**
+     * Reads and clears [userAskedDuringLoad]. Only [owner], the load the Retry arrived during, sees it as asked. Any
+     * other load clears it without taking it, so a Retry whose load was cancelled never reaches a later automatic one.
+     */
+    private fun takeUserAskedDuringLoad(owner: Job): Boolean {
+        val asked = userAskedDuringLoad === owner
+        userAskedDuringLoad = null
+        return asked
     }
 
     /** Pays off the muting marks that were in force when a refresh began, unless a newer one arrived meanwhile. */

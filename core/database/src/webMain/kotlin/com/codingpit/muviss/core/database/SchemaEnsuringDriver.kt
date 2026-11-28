@@ -1,13 +1,16 @@
 package com.codingpit.muviss.core.database
 
+import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.async.coroutines.awaitCreate
 import app.cash.sqldelight.async.coroutines.awaitMigrate
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * The shared half of web persistence, in the `webMain` intermediate source set
@@ -65,24 +68,49 @@ internal class SchemaEnsuringDriver(private val delegate: SqlDriver) : SqlDriver
         delegate.execute(identifier, sql, parameters, binders).await()
     }
 
+    /**
+     * A caller's `transaction { }` begins here, so the schema must be settled
+     * before its `BEGIN` reaches the worker. Without this, a transaction opened
+     * before the first query would run its body against a database that has not
+     * been created or migrated yet, and [ensureSchema] would then nest its own
+     * transaction inside the caller's.
+     */
+    override fun newTransaction(): QueryResult<Transacter.Transaction> = QueryResult.AsyncValue {
+        ensureSchema()
+        delegate.newTransaction().await()
+    }
+
     private suspend fun ensureSchema() {
         if (schemaReady) return
         mutex.withLock {
             if (schemaReady) return
-            when (val step = schemaStepFor(readUserVersion(), MuvissDatabase.Schema.version)) {
-                SchemaStep.Create -> {
-                    MuvissDatabase.Schema.awaitCreate(delegate)
-                    writeUserVersion(MuvissDatabase.Schema.version)
-                }
+            // NonCancellable: once `BEGIN` is sent, the transaction must reach its
+            // COMMIT or ROLLBACK. SQLDelight's `transaction { }` does not roll back
+            // when the caller is cancelled while awaiting a worker reply, so a
+            // cancelled first query would leave the worker's transaction open
+            // forever: every later write nests under it, and the snapshot export
+            // that waits for no open transaction never runs again (#1027 review).
+            withContext(NonCancellable) {
+                when (val step = schemaStepFor(readUserVersion(), MuvissDatabase.Schema.version)) {
+                    // One transaction, as on Android (the framework's SQLiteOpenHelper) and iOS (SQLiter's
+                    // migrateIfNeeded): the schema change and its user_version stamp commit together or not at
+                    // all (#1027). Without it each statement autocommits, and the worker's debounced snapshot or
+                    // the pagehide flush can store a half-applied migration under the old version, so the next
+                    // launch re-runs it over its own partial output (30.sqm's rebuild fails on the table it left).
+                    SchemaStep.Create -> MuvissDatabase(delegate).transaction {
+                        MuvissDatabase.Schema.awaitCreate(delegate)
+                        writeUserVersion(MuvissDatabase.Schema.version)
+                    }
 
-                is SchemaStep.Migrate -> {
-                    MuvissDatabase.Schema.awaitMigrate(delegate, step.from, step.to)
-                    writeUserVersion(step.to)
-                }
+                    is SchemaStep.Migrate -> MuvissDatabase(delegate).transaction {
+                        MuvissDatabase.Schema.awaitMigrate(delegate, step.from, step.to)
+                        writeUserVersion(step.to)
+                    }
 
-                SchemaStep.UpToDate -> Unit
+                    SchemaStep.UpToDate -> Unit
+                }
+                schemaReady = true
             }
-            schemaReady = true
         }
     }
 

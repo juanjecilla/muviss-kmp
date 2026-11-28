@@ -2,10 +2,13 @@
 
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import com.codingpit.muviss.core.database.CollectionEntry
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
-import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -33,13 +36,16 @@ import kotlin.test.assertTrue
  */
 class SnapshotRefreshSyncSafetyTest {
 
+    private lateinit var driver: SqlDriver
+    private lateinit var database: MuvissDatabase
     private lateinit var queries: CollectionEntryQueries
     private lateinit var clock: FakeClock
     private lateinit var repository: SqlDelightCollectionRepository
 
     @BeforeTest
     fun setUp() {
-        val database = inMemoryDatabase()
+        driver = inMemoryDriver()
+        database = MuvissDatabase(driver)
         queries = database.collectionEntryQueries
         clock = FakeClock(10_000L)
         repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
@@ -53,7 +59,13 @@ class SnapshotRefreshSyncSafetyTest {
     )
 
     /** A row exactly as a completed sync leaves it: clean, and stamped by whichever device last edited it. */
-    private suspend fun seedSyncedRow(deleted: Boolean = false, rating: Long? = null, updatedAt: Long = 2_000L) {
+    private suspend fun seedSyncedRow(
+        deleted: Boolean = false,
+        rating: Long? = null,
+        updatedAt: Long = 2_000L,
+        totalEpisodes: Long = 1L,
+        airedEpisodes: Long = 1L,
+    ) {
         queries.upsert(
             mediaId = matrix.toString(),
             mediaType = "movie",
@@ -61,8 +73,8 @@ class SnapshotRefreshSyncSafetyTest {
             posterUrl = null,
             releaseYear = 1999L,
             productionStatus = "RELEASED",
-            totalEpisodes = 1L,
-            airedEpisodes = 1L,
+            totalEpisodes = totalEpisodes,
+            airedEpisodes = airedEpisodes,
             favorite = true,
             genres = "",
             runtimeMinutes = null,
@@ -103,6 +115,93 @@ class SnapshotRefreshSyncSafetyTest {
         assertEquals("keep", after.note)
         assertTrue(after.favorite)
         assertEquals(500L, after.addedAtEpochMs)
+    }
+
+    /** Rows changed by this connection so far. SQLite counts a row an UPDATE matched even when its values are unchanged. */
+    private fun totalChanges(): Long = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT total_changes()",
+        mapper = { cursor ->
+            cursor.next()
+            QueryResult.Value(cursor.getLong(0) ?: 0L)
+        },
+        parameters = 0,
+    ).value
+
+    @Test
+    fun a_refresh_that_changes_no_provider_value_writes_no_row() = runTest {
+        seedSyncedRow()
+        repository.refreshSnapshot(details())
+
+        val before = totalChanges()
+        repository.refreshSnapshot(details())
+
+        assertEquals(before, totalChanges(), "a refresh with the same provider data changes no row, so a tab that only visits the Library is not seen to have written")
+    }
+
+    /** One episodeProgress tick for [matrix]; seasons 0 are specials (ADR 0037). */
+    private suspend fun tick(season: Long, episode: Long) {
+        database.episodeProgressQueries.upsert(
+            episodeId = "$matrix-s$season-e$episode",
+            mediaId = matrix.toString(),
+            seasonNumber = season,
+            episodeNumber = episode,
+            seen = true,
+            updatedAtEpochMs = 1_000L,
+            isDirty = false,
+        )
+    }
+
+    private class CountCase(
+        val name: String,
+        val storedCount: Long,
+        val incomingCount: Long,
+        val regularSeen: Int,
+        val specialSeen: Int,
+        val expectedCount: Long,
+    )
+
+    /**
+     * The guard in `updateSnapshot` must use the same regular-episode floor as
+     * its SET clause (ADR 0037, #938). A special tick that the floor ignores must
+     * not make an identical refresh look like a change (the web worker would call
+     * it this tab's own write), and a stored count the floor corrects must not be
+     * skipped.
+     */
+    @Test
+    fun a_refresh_guard_counts_the_same_regular_episodes_as_its_set_clause() = runTest {
+        val cases = listOf(
+            CountCase("regular only, counts match: nothing changes", 10, 10, 10, 0, 10),
+            CountCase("a seen special, counts match: nothing changes", 10, 10, 10, 1, 10),
+            CountCase("a seen special, stored one above regular: corrected", 11, 10, 10, 1, 10),
+            CountCase("regular only, stored one above: corrected", 11, 10, 10, 0, 10),
+        )
+        for (case in cases) {
+            queries.deleteAll()
+            database.episodeProgressQueries.deleteAll()
+            seedSyncedRow(totalEpisodes = case.storedCount, airedEpisodes = case.storedCount)
+            (1..case.regularSeen).forEach { tick(season = 1, episode = it.toLong()) }
+            (1..case.specialSeen).forEach { tick(season = 0, episode = it.toLong()) }
+
+            val before = totalChanges()
+            queries.updateSnapshot(
+                title = "The Matrix",
+                posterUrl = null,
+                releaseYear = 1999L,
+                productionStatus = "RELEASED",
+                totalEpisodes = case.incomingCount,
+                airedEpisodes = case.incomingCount,
+                genres = "",
+                runtimeMinutes = null,
+                mediaId = matrix.toString(),
+            )
+
+            // A stored count the floor corrects is the only thing that may change the row.
+            val expectChanged = case.storedCount != case.expectedCount
+            assertEquals(expectChanged, totalChanges() > before, "${case.name}: rows changed")
+            assertEquals(case.expectedCount, row().totalEpisodes, "${case.name}: totalEpisodes")
+            assertEquals(case.expectedCount, row().airedEpisodes, "${case.name}: airedEpisodes")
+        }
     }
 
     @Test

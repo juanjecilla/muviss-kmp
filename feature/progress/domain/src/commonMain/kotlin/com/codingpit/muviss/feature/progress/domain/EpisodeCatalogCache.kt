@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
 import com.codingpit.muviss.core.common.concurrency.mapBounded
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,8 @@ import kotlinx.coroutines.flow.update
 class EpisodeCatalogCache(
     private val fetchEpisodeCatalog: FetchEpisodeCatalogUseCase,
     private val store: EpisodeCatalogStore,
+    // Shared with Delete all data (#1056): a fetch that lands after the erase must not re-create the deleted rows.
+    private val erasures: DataEraseFence,
 ) {
 
     private val _catalogs = MutableStateFlow<Map<MediaId, List<Season>>>(emptyMap())
@@ -70,10 +73,17 @@ class EpisodeCatalogCache(
      * losing what is stored because the network was unavailable is strictly
      * worse than keeping it.
      */
-    private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> = mediaIds.mapBounded { id ->
-        fetchEpisodeCatalog(id).onSuccess { seasons ->
-            store.save(id, seasons)
-            _catalogs.update { it + (id to seasons) }
-        }.exceptionOrNull()
-    }.filterNotNull()
+    private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> {
+        // Taken once, before the first title is asked: every answer in this batch is written against it (#1056, #1090).
+        val batch = erasures.batch()
+        return mediaIds.mapBounded { id ->
+            val fetched = batch.guardedFetch { fetchEpisodeCatalog(id) }
+            fetched.value.onSuccess { seasons ->
+                fetched.write {
+                    store.save(id, seasons)
+                    _catalogs.update { it + (id to seasons) }
+                }
+            }.exceptionOrNull()
+        }.filterNotNull()
+    }
 }

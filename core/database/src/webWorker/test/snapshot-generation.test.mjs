@@ -466,6 +466,34 @@ test("a write that changes no row does not count as this tab's own change", asyn
   assert.equal(idb.data.get(GENERATION), 2);
 });
 
+// A Library provider refresh rewrites rows with the values they already hold. An
+// UPDATE that matches no changed value changes no row, so it must not count as
+// this tab's own change either (#841).
+test("a provider refresh that changes no row does not count as this tab's own change", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+
+  const b = await openTab(idb, locks);
+  await settle();
+  b.exec("UPDATE NO-OP refreshSnapshot");
+  assert.equal(b.state().localWrites, false);
+
+  a.exec("INSERT A2");
+  await a.flush();
+  const granted = locks.nextGrant();
+  a.close();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
+
+  assert.equal(b.state().reloadRequested, true, "out of date and only refreshed: it reloads");
+  assert.equal(b.state().stale, false);
+});
+
 test("a snapshot saved before generations existed counts as generation 0", async () => {
   const idb = makeIndexedDb();
   idb.data.set(KEY, encode("legacy;"));
