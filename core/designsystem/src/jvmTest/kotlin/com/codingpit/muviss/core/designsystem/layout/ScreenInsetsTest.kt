@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
 import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.testing.TestSafeAreaInsets
@@ -122,6 +123,20 @@ class ScreenInsetsTest {
         // Skiko reports zero insets, so the default read is a no-op here; the
         // assertion that matters is that it composes and places at the origin.
         onNodeWithTag(CONTENT).assertTopPositionInRootIsEqualTo(0.dp)
+    }
+
+    @Test
+    fun a_side_extended_screen_runs_under_the_side_insets() = runComposeUiTest {
+        setContent {
+            ScreenInsets(insets = WindowInsets(left = 20.dp, top = 0.dp, right = 20.dp, bottom = 0.dp)) {
+                Box(Modifier.extendIntoSideInsets(left = 20.dp, right = 20.dp).testTag(CONTENT).fillMaxSize())
+            }
+        }
+
+        val window = onRoot().fetchSemanticsNode().boundsInRoot
+        val content = onNodeWithTag(CONTENT).fetchSemanticsNode().boundsInRoot
+        assertEquals(window.left, content.left)
+        assertEquals(window.right, content.right)
     }
 
     private companion object {

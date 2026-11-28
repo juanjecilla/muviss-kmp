@@ -61,8 +61,11 @@ internal fun primaryActionFor(state: DetailUiState, next: NextEpisodes): Primary
 
     next.aired?.let { return PrimaryAction.TickNext(it) }
     // The next-episode answer skips specials, so with only one left the title would read "Caught up" while WatchStatus
-    // still counts it (ADR 0037). Finished cannot hold here: it needs every aired special seen too.
-    next.unseenSpecial?.let { return PrimaryAction.SpecialUnseen(it) }
+    // still counts it (ADR 0037). Finished cannot hold here: it needs every aired special seen too. Only when the setting
+    // counts specials (#938): with it off, an unseen special is not progress, so the title really is caught up.
+    if (state.specialsCounted) {
+        next.unseenSpecial?.let { return PrimaryAction.SpecialUnseen(it) }
+    }
     return when {
         state.watchStatus == WatchStatus.FINISHED -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Finished, null)
 

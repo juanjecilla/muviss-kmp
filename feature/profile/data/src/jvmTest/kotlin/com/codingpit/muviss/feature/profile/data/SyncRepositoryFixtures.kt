@@ -43,6 +43,8 @@ internal class FakeFeatureFlags(automaticSync: Boolean = false) : FeatureFlags {
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
 
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
+    override val countSpecialsTowardProgress: Flow<Boolean> = flowOf(false)
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) = Unit
 }
 
 /** A coordinator that watches nothing (no dirty rows, never enabled), for tests that are not about it. */

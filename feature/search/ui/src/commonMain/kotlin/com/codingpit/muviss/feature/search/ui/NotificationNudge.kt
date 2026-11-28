@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -78,12 +79,9 @@ class NotificationNudgeViewModel(
 
     /**
      * Notifications are off and the OS will not ask again (#326): a request would answer "no" at once, so the
-     * nudge explains the blocked switch instead of offering a tap that goes nowhere.
-     *
-     * Both answers are read from the OS now, never from a synchronous cache: on iOS the cache can predate a
-     * change the person just made in Settings (#846), and a decision taken on it would show or hide the wrong line.
+     * nudge explains the blocked switch instead of offering a tap that goes nowhere. Judged from one OS read (#1016).
      */
-    private suspend fun refusedForGoodNow(off: Boolean): Boolean = off && !system.canAskAgainNow()
+    private fun refusedForGood(status: NotificationStatus): Boolean = status.blocked && !status.canAskAgain
 
     /**
      * Advanced by every permission decision (a turn-on tap that is taken, its answer, a dismissal). An OS read
@@ -101,6 +99,9 @@ class NotificationNudgeViewModel(
 
     /** The settlement in flight. Replaced, never queued. Cancelling it is an optimisation: the guards decide. */
     private var settlement: Job? = null
+
+    /** The turn-on in flight. A tap while it is active is ignored (#1003). */
+    private var turnOnJob: Job? = null
 
     init {
         onboarding.observeNotificationNudge(mediaId)
@@ -120,14 +121,17 @@ class NotificationNudgeViewModel(
      * nudge whatever the answer, so [NotificationNudgeState.answering] keeps the banner up until this has decided.
      */
     fun turnOn() {
+        // A second tap while one is in flight is the same decision, and must not ask the OS again (#1003). This runs
+        // before the epoch moves: an ignored tap that advanced it would make the first tap drop its own answer.
+        if (turnOnJob?.isActive == true) return
         val decision = ++decisionEpoch
         settlement?.cancel()
-        viewModelScope.launchReporting {
-            val refusedForGood = refusedForGoodNow(system.blockedNow())
-            // The preflight reads suspended: a dismissal or a newer turn-on may have begun meanwhile, and then this
+        turnOnJob = viewModelScope.launchReporting {
+            val now = system.statusNow()
+            // The preflight read suspends: a dismissal or a newer turn-on may have begun meanwhile, and then this
             // tap no longer owns the decision. Checked before any write, so a stale tap neither asks nor shows answering.
             if (decisionEpoch != decision) return@launchReporting
-            if (refusedForGood) {
+            if (refusedForGood(now)) {
                 commitDecision(decision, blocked = true, retryable = false)
                 return@launchReporting
             }
@@ -136,10 +140,10 @@ class NotificationNudgeViewModel(
             try {
                 when (onboarding.acceptNotificationNudge()) {
                     NotificationNudgeResult.DENIED -> {
-                        val off = system.blockedNow()
-                        val forGood = refusedForGoodNow(off)
+                        val after = system.statusNow()
+                        val forGood = refusedForGood(after)
                         // A read that now says allowed (the person enabled it meanwhile) must not leave a Turn on line.
-                        commitDecision(decision, blocked = forGood, retryable = off && !forGood)
+                        commitDecision(decision, blocked = forGood, retryable = after.blocked && !forGood)
                     }
 
                     NotificationNudgeResult.ENABLED -> commitDecision(decision, blocked = false, retryable = false)
@@ -183,13 +187,12 @@ class NotificationNudgeViewModel(
         val seq = ++settleSeq
         val epoch = decisionEpoch
         settlement = viewModelScope.launchReporting {
-            val off = system.blockedNow()
-            val refusedForGood = refusedForGoodNow(off)
+            val now = system.statusNow()
             if (seq != settleSeq || epoch != decisionEpoch) return@launchReporting
             _state.update { s ->
                 when {
-                    !off -> s.copy(blocked = false, retryable = false)
-                    refusedForGood -> s.copy(blocked = s.blocked || s.offered || s.retryable, retryable = false)
+                    !now.blocked -> s.copy(blocked = false, retryable = false)
+                    refusedForGood(now) -> s.copy(blocked = s.blocked || s.offered || s.retryable, retryable = false)
                     else -> s
                 }
             }

@@ -8,6 +8,9 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.SourceId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -29,14 +32,23 @@ class TmdbDeckSource(
     private val dispatchers: AppDispatchers,
 ) : DeckSource {
     override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = withContext(dispatchers.io) {
-        runCatching {
+        runSuspendCatchingUnlessCancelled {
             val result = registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds)
             result.copy(totalPages = minOf(result.totalPages, MAX_DISCOVER_PAGE))
         }
     }
 
     override suspend fun genres(type: MediaType): Result<List<Genre>> = withContext(dispatchers.io) {
-        runCatching { registry.require(SourceId.TMDB).genres(type) }
+        runSuspendCatchingUnlessCancelled { registry.require(SourceId.TMDB).genres(type) }
+    }
+
+    /**
+     * [runCatching] that does not swallow the caller's cancellation (#1087, the #1079 rule). When the caller's coroutine
+     * has been cancelled, the [CancellationException] is rethrown; a cancellation from an inner source while the caller
+     * is still active stays an ordinary failure, so the deck can offer a retry. Must run inside the [withContext] block.
+     */
+    private suspend inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure {
+        if (it is CancellationException && !currentCoroutineContext().isActive) throw it
     }
 
     companion object {

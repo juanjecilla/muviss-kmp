@@ -56,6 +56,13 @@ FROM triageDecision
 WHERE deleted = 0
 ORDER BY decidedAtEpochMs DESC;
 
+-- Every row, tombstones included, for the data export (#1074): a backup carries a removal so a device still
+-- holding the live row removes it on restore. `selectAll` keeps filtering `deleted`.
+selectAllIncludingDeleted:
+SELECT *
+FROM triageDecision
+ORDER BY decidedAtEpochMs DESC;
+
 selectByVerdict:
 SELECT *
 FROM triageDecision

@@ -32,7 +32,8 @@ cat > "$BIN/adb" <<'EOF'
 #!/bin/bash
 echo "adb $*" >> "$CALLS"
 case "$*" in
-  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n'
+    [ -n "${FAKE_TWO_DEVICES:-}" ] && printf 'emulator-5556\tdevice\n' ;;
   *"exec-out run-as"*"databases/muviss.db")
     [ -n "${FAKE_DEVICE_DB:-}" ] && cat "$FAKE_DEVICE_DB" || exit 1 ;;
   *) exit 1 ;;
@@ -66,18 +67,28 @@ for a in "$@"; do
   [ "$prev" = "-D" ] && headers="$a"
   prev="$a"
 done
-case "$args" in
-  *"/auth/v1/admin/users"*) route=auth-admin; code=${CURL_ADMIN:-200}; body='{"id":"x"}' ;;
-  *"/auth/v1/token"*) route=auth-token; code=${CURL_TOKEN_CODE:-200}; body=${CURL_TOKEN_BODY-'{"access_token":"tok.ABC.def"}'} ;;
-  *"count=exact"*)
-    route=rest-count; code=${CURL_COUNT:-200}; body=''
-    [ -n "$headers" ] && printf 'Content-Range: 0-0/%s\r\n' "${CURL_COUNT_TOTAL:-7}" > "$headers" ;;
-  *"-X DELETE"*) route=rest-delete; code=${CURL_DELETE:-204}; body='' ;;
-  *"episode_progress?select"*) route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]} ;;
-  *"/rest/v1/"*) route=rest-write; code=${CURL_WRITE:-201}; body='' ;;
-  *) route=other; code=200; body='' ;;
-esac
+# verify-rls (#1024) tells the anonymous and the owner reads apart: an owner request
+# carries an Authorization header, an anonymous one does not. Its probe rows carry
+# "rls-probe", its anonymous writes come without a token and are refused with 42501.
+if [[ "$args" == *"/auth/v1/admin/users"* ]]; then route=auth-admin; code=${CURL_ADMIN:-200}; body='{"id":"x"}'
+elif [[ "$args" == *"/auth/v1/token"* ]]; then route=auth-token; code=${CURL_TOKEN_CODE:-200}; body=${CURL_TOKEN_BODY-'{"access_token":"tok.ABC.def"}'}
+elif [[ "$args" == *"count=exact"* ]]; then
+  route=rest-count; code=${CURL_COUNT:-200}; body=''
+  [ -n "$headers" ] && printf 'Content-Range: 0-0/%s\r\n' "${CURL_COUNT_TOTAL:-7}" > "$headers"
+elif [[ "$args" == *"-X DELETE"* ]]; then route=rest-delete; code=${CURL_DELETE:-204}; body=''
+elif [[ "$args" == *"-X POST"* && "$args" == *Authorization* ]]; then route=rls-probe-write; code=${CURL_PROBE_WRITE:-${CURL_WRITE:-201}}; body=''
+elif [[ "$args" == *"-X POST"* ]]; then route=rls-anon-write; code=${CURL_ANON_WRITE:-401}; body='{"code":"42501","message":"new row violates row-level security policy"}'
+elif [[ "$args" == *"rls-probe"* && "$args" == *Authorization* ]]; then route=rls-probe-read; code=${CURL_PROBE_READ_CODE:-200}; body=${CURL_PROBE_READ-'[{"id":"rls-probe"}]'}
+elif [[ "$args" == *"select=title,rating"* ]]; then route=rest-row; code=${CURL_ROW_CODE:-200}; body=${CURL_ROW:-'[{"title":"seed","rating":8}]'}
+elif [[ "$args" == *"select=*"* && "$args" != *Authorization* ]]; then route=rls-anon-read; code=${CURL_ANON_READ_CODE:-200}; body=${CURL_ANON_READ-'[]'}
+elif [[ "$args" == *"select=*"* ]]; then route=rest-read; code=${CURL_READ_CODE:-200}; body=${CURL_READ:-[]}
+elif [[ "$args" == *"episode_progress?select"* ]]; then route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]}
+elif [[ "$args" == *"/rest/v1/"* ]]; then route=rest-write; code=${CURL_WRITE:-201}; body=''
+else route=other; code=200; body=''
+fi
 echo "curl $route" >> "$CALLS"
+# A probe write whose response is lost: curl fails, though the row may have landed.
+[ "$route" = rls-probe-write ] && [ -n "${CURL_LOST_RESPONSE:-}" ] && exit 28
 case "$args" in
   *-w*) printf '%s\n%s' "$body" "$code" ;;
   *) printf '%s' "$body" ;;
@@ -262,6 +273,75 @@ FAKE_DEVICE_DB="$RESERVED_ONLY_DB" run "" sync-status.sh
 if [ "$RC" -eq 0 ] && grep -q "^  none$" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
   pass "only the reserved row present: the list says none, as for a device that never pulled"
 else fail "reserved row only: rc=$RC out=$OUT"; fi
+
+echo "verify-rls checks each table against a row the owner wrote (#1024)"
+
+# Ten tables, each with an owner probe row. The cowatch pair needs a peer, which
+# the local stack creates through the admin API. Hosted needs RLS_PEER_USER_ID.
+run local verify-rls.sh
+if [ "$RC" -eq 0 ] && grep -q "RLS looks correct." <<<"$OUT" \
+    && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 10 ] \
+    && [ "$(grep -c '^curl rls-probe-write$' "$CALLS")" -eq 10 ] \
+    && [ "$(grep -c 'cleaned up: ' <<<"$OUT")" -eq 10 ]; then
+  pass "local: every table's probe row is written, seen by its owner, cleaned up, and the anon reads are empty"
+else fail "local verify-rls happy path: rc=$RC out=$OUT"; fi
+
+CURL_ANON_READ='[{"media_id":"someone-else"}]' run local verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "LEAK" <<<"$OUT" && ! grep -q "RLS looks correct." <<<"$OUT"; then
+  pass "an anonymous read that returns a row fails the check"
+else fail "anon leak not caught: rc=$RC out=$OUT"; fi
+
+CURL_PROBE_READ='[]' run local verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "proves nothing" <<<"$OUT" && ! grep -q "RLS looks correct." <<<"$OUT"; then
+  pass "an owner that cannot read its own probe row fails, so an empty anon read is never taken as proof"
+else fail "owner read empty not caught: rc=$RC out=$OUT"; fi
+
+CURL_PROBE_WRITE=403 run local verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "could not write its probe row" <<<"$OUT" && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 0 ]; then
+  pass "a refused probe write is reported, and its table is not counted as verified"
+else fail "refused probe write: rc=$RC out=$OUT"; fi
+
+CURL_LOST_RESPONSE=1 run local verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "cleaned up: collection_entry" <<<"$OUT"; then
+  pass "a probe write whose response was lost is still cleaned up, and the run fails"
+else fail "lost probe response: rc=$RC out=$OUT"; fi
+
+CURL_TOKEN_BODY='{"error":"invalid_grant"}' CURL_TOKEN_CODE=400 run local verify-rls.sh
+if [ "$RC" -ne 0 ] && ! grep -q "^curl rls-" "$CALLS"; then
+  pass "no signed-in session: verify-rls stops before any probe or read"
+else fail "no session: rc=$RC calls=$(cat "$CALLS")"; fi
+
+RLS_PEER_USER_ID= FAKE_DEVICE_DB="$DEVICE_DB" run "" verify-rls.sh
+if [ "$RC" -ne 0 ] && grep -q "RLS_PEER_USER_ID" <<<"$OUT" \
+    && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 8 ] \
+    && ! grep -q "^curl auth-admin$" "$CALLS"; then
+  pass "hosted without a peer: the eight other tables are verified, the cowatch pair is reported, and no account is created"
+else fail "hosted without peer: rc=$RC out=$OUT"; fi
+
+RLS_PEER_USER_ID=peer-1 FAKE_DEVICE_DB="$DEVICE_DB" run "" verify-rls.sh
+if [ "$RC" -eq 0 ] && [ "$(grep -c 'owner sees its probe row' <<<"$OUT")" -eq 10 ]; then
+  pass "hosted with a peer: all ten tables are verified"
+else fail "hosted with peer: rc=$RC out=$OUT"; fi
+
+echo "adb with two devices and no MUVISS_DEVICE stops the script"
+MUVISS_DEVICE= FAKE_TWO_DEVICES=1 lib "adb_ shell true; echo after-adb"
+if [ "$RC" -ne 0 ] && ! grep -q "after-adb" <<<"$OUT" && ! grep -q "adb shell" "$CALLS"; then
+  pass "the ambiguity exits the script before any adb call"
+else fail "two devices: rc=$RC out=$OUT calls=$(cat "$CALLS")"; fi
+
+echo "verify-null-clearing checks the seed before it trusts the rest"
+CURL_ROW='[{"title":"old-title","rating":null}]' run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that did not land (stale probe row) fails and says so"
+else fail "stale probe row: rc=$RC out=$OUT"; fi
+CURL_ROW='[{"title":"seed","rating":8}]' run local verify-null-clearing.sh
+if ! grep -q "the seed did not land" <<<"$OUT"; then
+  pass "a seed that landed prints no seed warning"
+else fail "landed seed warned: out=$OUT"; fi
+CURL_ROW_CODE=500 run local verify-null-clearing.sh
+if [ "$RC" -ne 0 ] && grep -q "read-back failed" <<<"$OUT" && ! grep -q "did not land" <<<"$OUT" && ! grep -q "newer timestamp" <<<"$OUT"; then
+  pass "a failed read-back is reported as a read failure, not as a newer row"
+else fail "read-back failure: rc=$RC out=$OUT"; fi
 
 echo "every sync script parses"
 

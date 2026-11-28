@@ -40,6 +40,9 @@ upsert() { # $1 title, $2 updated_at, $3 json members after updated_at. Prints t
 }
 # Prints "title rating", read in one request. A failed read prints a marker that
 # matches no expected value, so a check on it cannot pass.
+# True when row() could not read the row back at all, as opposed to reading a
+# value that differs from the expected one.
+read_failed() { [ "$1" = READ_FAILED ] || [ "$1" = UNREADABLE ]; }
 row() {
   if ! http_call "$REST?media_id=eq.$MEDIA&select=title,rating" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"; then
     echo "READ_FAILED READ_FAILED"; return
@@ -59,11 +62,20 @@ code=$(upsert seed $T1 ',"rating":8'); rc=$?
 read -r T R <<< "$(row)"
 echo "1. seed rating 8           -> HTTP $code, title: $T, rating: $R"
 [ "$rc" -eq 0 ] || { echo "  <-- the seed write was refused"; fail=1; }
+# A leftover probe row stamped after T1 makes the trigger discard the seed with
+# an HTTP success, so only the values read back prove the seed landed (#1025).
+# A failed read proves nothing either way, so it is reported as one.
+if [ "$rc" -eq 0 ] && read_failed "$T"; then
+  echo "  <-- the seed was written but the read-back failed, so it is unproven"; fail=1
+elif [ "$rc" -eq 0 ] && { [ "$T" != seed ] || [ "$R" != 8 ]; }; then
+  echo "  <-- the seed did not land (title $T, rating $R); a leftover probe row with a newer timestamp is a possible cause"; fail=1
+fi
 
 upsert no-rating-key $T2 '' >/dev/null; rc=$?
 read -r T R <<< "$(row)"
 printf '2. newer write, no rating key  -> title: %s, rating: %s' "$T" "$R"
 if [ "$rc" -ne 0 ]; then echo "  <-- the write was refused"; fail=1
+elif read_failed "$T"; then echo "  <-- the read-back failed, so this step proves nothing"; fail=1
 elif [ "$T" != "no-rating-key" ]; then echo "  <-- the write did not land, so this step proves nothing"; fail=1
 elif [ "$R" = "8" ]; then echo "  (left alone: this is the bug the client used to have)"
 else echo "  <-- an omitted key changed the column; the premise of the fix is wrong"; fail=1; fi
@@ -72,6 +84,7 @@ upsert null-rating $T3 ',"rating":null' >/dev/null; rc=$?
 read -r T R <<< "$(row)"
 printf '3. newer write, "rating":null  -> title: %s, rating: %s' "$T" "$R"
 if [ "$rc" -ne 0 ]; then echo "  <-- the write was refused"; fail=1
+elif read_failed "$T"; then echo "  <-- the read-back failed, so this step proves nothing"; fail=1
 elif [ "$T" != "null-rating" ]; then echo "  <-- the write did not land, so this step proves nothing"; fail=1
 elif [ "$R" = "None" ] || [ "$R" = "null" ]; then echo "  OK (cleared)"
 else echo "  <-- an explicit null did not clear it"; fail=1; fi

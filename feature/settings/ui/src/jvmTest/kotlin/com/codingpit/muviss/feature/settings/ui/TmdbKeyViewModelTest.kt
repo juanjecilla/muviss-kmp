@@ -104,6 +104,18 @@ class TmdbKeyViewModelTest {
     }
 
     @Test
+    fun a_key_erased_mid_check_shows_no_error_and_is_not_reported_as_saved() = runTest {
+        NoFlags.byokEnabled.value = true
+        val vm = viewModel()
+        settings.result = SaveTmdbKeyResult.ERASED
+        var done = false
+        vm.save("whatever") { done = true }
+        assertNull(vm.state.value.problem, "a failed check would say the key was not checked")
+        assertFalse(done, "a key that was not kept is not reported as saved")
+        assertFalse(vm.state.value.checking)
+    }
+
+    @Test
     fun each_failure_becomes_its_own_problem_and_is_not_reported_as_done() = runTest {
         NoFlags.byokEnabled.value = true
         val vm = viewModel()

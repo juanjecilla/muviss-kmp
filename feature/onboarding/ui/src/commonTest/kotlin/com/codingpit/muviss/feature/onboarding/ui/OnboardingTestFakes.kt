@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.onboarding.ui
 
+import com.codingpit.muviss.core.common.notifications.NotificationStatus
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.feature.onboarding.api.NotificationNudgeResult
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
@@ -134,7 +135,7 @@ internal class FakeSystemNotifications : SystemNotificationSettings {
     var opened = 0
         private set
 
-    override fun blocked(): Boolean = false
+    override suspend fun statusNow(): NotificationStatus = NotificationStatus(blocked = false, canAskAgain = true)
 
     override fun open() {
         opened++
