@@ -71,8 +71,8 @@ Not available from TMDB: awards, box office, "born this week".
 
 ### Fetch and storage
 - URL comes from Remote Config `lineupUrl`. The compiled default is `LINEUP_URL`
-  (the public muvissapp.com file; not a secret). `off` or blank means the bundled
-  copy only. The compiled default matters because Remote Config is dark until the
+  (the public muvissapp.com file; not a secret). `off` means the bundled copy only; a blank
+  `LINEUP_URL` counts as unset, and a served value must be https. The compiled default matters because Remote Config is dark until the
   ConfigCat product exists (#316).
 - Fetched on foreground, at most once every 6 hours, with ETag.
 - Last good copy in a new `lineupCache` table: a cache like `remoteConfigCache`,
