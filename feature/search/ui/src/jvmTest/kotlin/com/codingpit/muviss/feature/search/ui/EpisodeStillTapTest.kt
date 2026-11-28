@@ -56,10 +56,10 @@ class EpisodeStillTapTest {
         // The still's request is held, so the screen shows the loading state: the state in which the picture's own
         // description (the episode title) used to be read as part of the button's name.
         val gate = CompletableDeferred<Unit>()
-        val loader = installLoader(mapOf(drawnImageUrl(STILL, PosterSize.Detail)!! to Answer.Waits(gate, Size(300f, 169f))))
+        val loader = installLoader(mapOf(drawnImageUrl(STILL, PosterSize.Still)!! to Answer.Waits(gate, Size(300f, 169f))))
         try {
             setContent { EpisodeWithStill(stillUrl = STILL) { _, _ -> } }
-            waitUntil(timeoutMillis = 10_000) { drawnImageUrl(STILL, PosterSize.Detail) in loader.requested }
+            waitUntil(timeoutMillis = 10_000) { drawnImageUrl(STILL, PosterSize.Still) in loader.requested }
             waitForIdle()
 
             onNodeWithContentDescription("Still").assertContentDescriptionEquals("Still")
