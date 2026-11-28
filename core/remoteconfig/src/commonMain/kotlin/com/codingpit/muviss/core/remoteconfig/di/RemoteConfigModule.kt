@@ -29,6 +29,8 @@ val remoteConfigModule: Module = module {
             featureRequestProvider = FeatureRequestProvider.fromStored(MuvissBuildConfig.FEATURE_REQUEST_PROVIDER),
             featureRequestUrl = MuvissBuildConfig.FEATURE_REQUEST_URL.takeIf { it.isNotBlank() },
             bugReportUrl = MuvissBuildConfig.BUG_REPORT_URL.takeIf { it.isNotBlank() },
+            // Not limited to https: a developer may point a local build at a plain http server.
+            lineupUrl = MuvissBuildConfig.LINEUP_URL.takeUnless { it.equals("off", ignoreCase = true) },
         )
         if (MuvissBuildConfig.CONFIGCAT_SDK_KEY.isBlank()) {
             DefaultsRemoteConfig(defaults)

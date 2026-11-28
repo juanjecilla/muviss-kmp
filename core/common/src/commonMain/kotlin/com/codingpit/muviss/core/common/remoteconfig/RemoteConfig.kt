@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
  *   #853): the stored enum name, `ONE_PICK`, `TOP_PICKS` or `DECK`. It is resolved on read for a row whose result mode
  *   is NULL, and never written into the row, so a stored choice is never changed by a served value. Kept as a string
  *   because `:core:common` cannot see `ResultMode`; the settings data layer reads it and falls back to the enum's default.
+ * @property lineupUrl where the Discover Lineup is published (EPIC 54, ADR 0040), or null to
+ *   use only the copy shipped in the app. Nothing reads it yet.
  */
 data class RemoteValues(
     val byokEnabled: Boolean,
@@ -32,6 +34,7 @@ data class RemoteValues(
     val featureRequestUrl: String? = null,
     val bugReportUrl: String? = null,
     val nextPickDefaultResultMode: String = NEXT_PICK_DEFAULT_RESULT_MODE,
+    val lineupUrl: String? = null,
 )
 
 /** The compiled default for [RemoteValues.nextPickDefaultResultMode]: `ResultMode.DEFAULT` in `:feature:nextpick:api`. */

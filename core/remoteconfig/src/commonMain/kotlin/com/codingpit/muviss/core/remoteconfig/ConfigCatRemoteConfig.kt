@@ -108,6 +108,7 @@ internal class ConfigCatRemoteConfig(
                 nextPickDefaultResultMode = client.getValue(KEY_NEXT_PICK_DEFAULT_RESULT_MODE, defaults.nextPickDefaultResultMode)
                     .trim()
                     .ifEmpty { defaults.nextPickDefaultResultMode },
+                lineupUrl = servedLineupUrl(client.getValue(KEY_LINEUP_URL, ""), defaults.lineupUrl),
             )
         } ?: defaults
         state.value = next
@@ -154,6 +155,19 @@ internal class ConfigCatRemoteConfig(
          */
         internal fun tmdbReadTokenOrNull(served: String): String? = served.trim().takeIf { TMDB_READ_TOKEN.matches(it) }
 
+        /**
+         * `off` turns the served Lineup off; an https URL replaces the compiled one. Anything else
+         * (missing key, placeholder, plain http) keeps [default].
+         */
+        internal fun servedLineupUrl(served: String, default: String?): String? {
+            val value = served.trim()
+            return when {
+                value.equals("off", ignoreCase = true) -> null
+                value.startsWith("https://") -> value
+                else -> default
+            }
+        }
+
         private val TMDB_READ_TOKEN = Regex("""eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 
         const val KEY_BYOK_ENABLED = "byokEnabled"
@@ -162,6 +176,7 @@ internal class ConfigCatRemoteConfig(
         const val KEY_FEATURE_REQUEST_URL = "featureRequestUrl"
         const val KEY_BUG_REPORT_URL = "bugReportUrl"
         const val KEY_NEXT_PICK_DEFAULT_RESULT_MODE = "nextPickDefaultResultMode"
+        const val KEY_LINEUP_URL = "lineupUrl"
 
         /** One fetch per hour per active device is the budget ADR 0026 sets against the free tier. */
         const val STALE_AFTER_MS: Long = 60L * 60L * 1000L

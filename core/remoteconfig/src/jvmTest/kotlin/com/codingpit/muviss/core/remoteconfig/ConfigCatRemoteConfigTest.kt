@@ -213,6 +213,26 @@ class ConfigCatRemoteConfigTest {
     }
 
     @Test
+    fun a_served_lineup_url_replaces_the_compiled_one() = runTest {
+        body = """
+            {"p":{"u":"https://cdn-eu.configcat.com","r":0,"s":"salt"},
+             "f":{"lineupUrl":{"t":1,"v":{"s":" https://example.org/v1.json "}}}}
+        """.trimIndent()
+        val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
+        config.refreshIfStale()
+        assertEquals("https://example.org/v1.json", config.values.value.lineupUrl)
+    }
+
+    @Test
+    fun a_served_lineup_url_is_off_https_or_the_compiled_default() {
+        val default = "https://muvissapp.com/lineup/v1.json"
+        assertNull(ConfigCatRemoteConfig.servedLineupUrl(" OFF ", default))
+        assertEquals(default, ConfigCatRemoteConfig.servedLineupUrl("", default))
+        assertEquals(default, ConfigCatRemoteConfig.servedLineupUrl("none", default))
+        assertEquals(default, ConfigCatRemoteConfig.servedLineupUrl("http://example.org/v1.json", default))
+    }
+
+    @Test
     fun a_served_next_pick_default_replaces_the_compiled_one() = runTest {
         body = """
             {"p":{"u":"https://cdn-eu.configcat.com","r":0,"s":"salt"},

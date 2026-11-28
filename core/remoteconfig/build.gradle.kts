@@ -26,6 +26,11 @@ val byokEnabled: Boolean = localProperty("BYOK_ENABLED").toBoolean()
 val featureRequestUrl: String = localProperty("FEATURE_REQUEST_URL")?.trim() ?: ""
 val bugReportUrl: String = localProperty("BUG_REPORT_URL")?.trim() ?: ""
 val featureRequestProvider: String = localProperty("FEATURE_REQUEST_PROVIDER")?.trim()?.ifEmpty { null } ?: "tally"
+// Where the Discover Lineup is published (ADR 0040). A public URL, not a secret, so it has a real
+// default: Remote Config is dark without an SDK key. `off` means the bundled copy only; blank reads
+// as unset, so an empty CI variable cannot turn it off by accident.
+val lineupUrl: String = localProperty("LINEUP_URL")?.trim()?.ifEmpty { null }
+    ?: "https://muvissapp.com/lineup/v1.json"
 
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
 
@@ -36,6 +41,7 @@ val generateBuildConfig by tasks.registering {
     val requestUrl = featureRequestUrl
     val bugUrl = bugReportUrl
     val requestProvider = featureRequestProvider
+    val lineup = lineupUrl
     // Inputs, so changing a property regenerates the file instead of being
     // ignored until a clean build.
     inputs.property("configCatSdkKey", sdkKey)
@@ -43,6 +49,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("featureRequestUrl", requestUrl)
     inputs.property("bugReportUrl", bugUrl)
     inputs.property("featureRequestProvider", requestProvider)
+    inputs.property("lineupUrl", lineup)
     outputs.dir(outDir)
     doLast {
         // A value ends up inside a Kotlin string literal, so a quote, a backslash or a `$` in it (a URL
@@ -62,6 +69,7 @@ val generateBuildConfig by tasks.registering {
                 const val FEATURE_REQUEST_URL: String = "${literal(requestUrl)}"
                 const val BUG_REPORT_URL: String = "${literal(bugUrl)}"
                 const val FEATURE_REQUEST_PROVIDER: String = "${literal(requestProvider)}"
+                const val LINEUP_URL: String = "${literal(lineup)}"
             }
             """.trimIndent() + "\n",
         )
