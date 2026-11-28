@@ -38,6 +38,130 @@ import kotlin.test.assertTrue
 
 class PickSessionViewModelTest {
 
+    /** An engine whose pick waits on [gate], so a test can act while a pick is in flight. */
+    private fun gatedViewModel(gate: CompletableDeferred<Unit>, pool: List<PickCandidate>, context: suspend () -> PickContext) = PickSessionViewModel(
+        context = context,
+        engine = PickEngine(
+            sources = listOf(
+                PickCandidates { _, _ ->
+                    gate.await()
+                    pool
+                },
+            ),
+            exclusions = PickExclusions { emptySet() },
+            history = PickHistoryReader { PickHistory() },
+            muting = PickMuting { MutedGenres.NONE },
+        ),
+        actions = RecordingNextPickActions(),
+        preferences = FixedPreferences(),
+    )
+
+    @Test
+    fun a_double_tap_on_the_last_answer_does_not_throw() {
+        // Given a quick session whose last question is answered while the pick is still in flight
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = gatedViewModel(gate, listOf(candidate("1")), { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) })
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        viewModel.skipQuestion()
+        assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+
+        // When the same last tap lands a second time before the pick returns
+        // Then the second tap is ignored rather than thrown from requireNotNull
+        viewModel.skipQuestion()
+        gate.complete(Unit)
+        assertIs<PickSessionUiState.Result>(viewModel.state.value)
+    }
+
+    @Test
+    fun back_during_a_pick_does_not_overwrite_the_question_the_person_returned_to() {
+        // Given a quick session whose last answer is in flight, so the pick has not landed
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = gatedViewModel(gate, listOf(candidate("1")), { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) })
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        val beforeLast = assertIs<PickSessionUiState.Asking>(viewModel.state.value).question
+        viewModel.skipQuestion()
+
+        // When the person goes back before the pick returns, and the pick then lands
+        assertTrue(viewModel.back())
+        assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        gate.complete(Unit)
+
+        // Then the screen still shows the question they went back to, not the pick of the session they left
+        val asking = assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        assertEquals(beforeLast, asking.question)
+    }
+
+    @Test
+    fun a_pick_in_flight_when_start_again_cannot_read_its_context_does_not_overwrite_failed() {
+        // Given a quick session whose last answer's pick is in flight
+        val pickGate = CompletableDeferred<Unit>()
+        val readGate = CompletableDeferred<Unit>()
+        var reads = 0
+        val quick = PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true)
+        val viewModel = gatedViewModel(pickGate, listOf(candidate("1")), {
+            if (++reads == 1) {
+                quick
+            } else {
+                readGate.await()
+                error("context unreadable")
+            }
+        })
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        viewModel.skipQuestion()
+
+        // When "Start again" cannot read its context, and only afterwards does the abandoned pick land
+        viewModel.start()
+        readGate.complete(Unit)
+        assertIs<PickSessionUiState.Failed>(viewModel.state.value)
+        pickGate.complete(Unit)
+
+        // Then the screen keeps Failed, so Retry stays on screen, instead of the abandoned pick's result
+        assertIs<PickSessionUiState.Failed>(viewModel.state.value)
+    }
+
+    @Test
+    fun a_stale_pick_that_lands_last_does_not_become_the_pool_another_draws_from() {
+        // Given a pick for the last answer, then back and a different last answer: two picks in flight, one per answer
+        val staleGate = CompletableDeferred<Unit>()
+        val currentGate = CompletableDeferred<Unit>()
+        var gathers = 0
+        val viewModel = PickSessionViewModel(
+            context = { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) },
+            engine = PickEngine(
+                sources = listOf(
+                    PickCandidates { _, _ ->
+                        gathers++
+                        if (gathers == 1) {
+                            staleGate.await()
+                            listOf(candidate("a1"), candidate("a2"))
+                        } else {
+                            currentGate.await()
+                            listOf(candidate("b1"), candidate("b2"))
+                        }
+                    },
+                ),
+                exclusions = PickExclusions { emptySet() },
+                history = PickHistoryReader { PickHistory() },
+                muting = PickMuting { MutedGenres.NONE },
+            ),
+            actions = RecordingNextPickActions(),
+            preferences = FixedPreferences(),
+        )
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        viewModel.skipQuestion()
+        assertTrue(viewModel.back())
+        viewModel.answer(PickAnswer.FormatAndTime(type = null, runtime = null))
+
+        // When the current pick lands first, the stale one lands last, and "another" is pressed
+        currentGate.complete(Unit)
+        staleGate.complete(Unit)
+        viewModel.another()
+
+        // Then "another" draws the next title of the current answers, not one of the stale pick's titles
+        val shown = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.map { it.candidate.id }
+        assertEquals(listOf(MediaId.tmdbMovie("b2")), shown)
+    }
+
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
 

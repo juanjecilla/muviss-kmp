@@ -88,6 +88,13 @@ class PickSessionViewModel(
 
     private var readContext: PickContext? = null
     private var session: PickSession? = null
+
+    /**
+     * Bumped whenever the screen moves on from the session it shows: an answer or a skip, back, and a fresh
+     * [start] (before its reads, which suspend, and again once they land). A pick started under an older value
+     * must not write its result, or pool, or it would overwrite the screen the person moved to.
+     */
+    private var generation = 0
     private val previous = ArrayDeque<PickSession>()
     private var mode: NextPickResultMode = NextPickResultMode.ONE_PICK
 
@@ -111,6 +118,9 @@ class PickSessionViewModel(
     /** Starts a fresh session, reading the context and the result mode again. Used on open and by "Start again". */
     fun start() {
         viewModelScope.launchReporting {
+            // Bumped before the reads, which suspend: a pick still in flight from the old session must not land over
+            // Loading, or over Failed when a read fails. The bump after the reads catches picks started during them.
+            generation++
             _state.value = PickSessionUiState.Loading
             // The result mode is read here too, so a failed database read ends in Failed, not a spinner.
             val (opened, chosen) = try {
@@ -124,6 +134,7 @@ class PickSessionViewModel(
             readContext = opened
             mode = chosen
             session = PickSession.start(opened)
+            generation++
             previous.clear()
             shown.clear()
             pool = null
@@ -139,6 +150,7 @@ class PickSessionViewModel(
     fun back(): Boolean {
         val last = previous.removeLastOrNull() ?: return false
         session = last
+        generation++
         pool = null
         viewModelScope.launchReporting { advance() }
         return true
@@ -174,9 +186,12 @@ class PickSessionViewModel(
     }
 
     private fun step(next: (PickSession) -> PickSession) {
-        val now = session ?: return
+        // A complete session has no question left to answer: a second tap on the last answer, while its pick is in
+        // flight, is ignored instead of tripping the session's requireNotNull.
+        val now = session?.takeIf { it.question != null } ?: return
         previous.addLast(now)
         session = next(now)
+        generation++
         pool = null
         viewModelScope.launchReporting { advance() }
     }
@@ -204,12 +219,18 @@ class PickSessionViewModel(
         val live = session ?: return
         val read = readContext ?: return
         val count = mode.pickCount
+        val started = generation
         try {
             // A pool that still holds enough unseen picks, or that already held everything the engine had, is reused.
             val cached = pool?.takeIf { held -> held.picks.count { it.candidate.id !in shown } >= count || held.picks.size < poolLimit }
-            val result = cached ?: run {
-                poolLimit = maxOf(POOL_SIZE, shown.size + count)
-                engine.pick(live.criteria, read, limit = poolLimit).also { pool = it }
+            val limit = if (cached == null) maxOf(POOL_SIZE, shown.size + count) else poolLimit
+            val result = cached ?: engine.pick(live.criteria, read, limit = limit)
+            // The person moved on while this pick was in flight (back, or a new session): its result is not theirs to
+            // show, and it must not become the pool either, or a later "another" would draw from the old answers.
+            if (started != generation) return
+            if (cached == null) {
+                pool = result
+                poolLimit = limit
             }
             val next = result.picks.filter { it.candidate.id !in shown }.take(count)
             if (next.isEmpty()) {
@@ -221,7 +242,7 @@ class PickSessionViewModel(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // Any failure ends the session visibly; rethrown so the crash reporter sees it (it drops a Routine Failure, MUVISS-B).
-            _state.value = PickSessionUiState.Failed
+            if (started == generation) _state.value = PickSessionUiState.Failed
             throw failure
         }
     }
