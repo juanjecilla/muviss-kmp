@@ -45,6 +45,9 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     /** Runs before a claim write, so a test can suspend the write and cancel the verdict while it is in flight (#1079). */
     var beforeClaimWrite: (suspend () -> Unit)? = null
 
+    /** Runs after a claim write has committed, so a test can cancel the verdict in the window before record returns (#1076). */
+    var afterClaimWrite: (suspend () -> Unit)? = null
+
     override suspend fun record(decision: TriageDecision) {
         writes++
         if (decision.createdEntry) {
@@ -60,6 +63,7 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
             }
         }
         decisions.value = decisions.value + (decision.mediaId to decision)
+        if (decision.createdEntry) afterClaimWrite?.invoke()
     }
 
     override suspend fun markResolved(mediaId: MediaId, resolved: Boolean) {

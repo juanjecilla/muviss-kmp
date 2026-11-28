@@ -215,6 +215,10 @@ class RecordDecisionUseCase(
      */
     private suspend fun rollBackAdd(mediaId: MediaId, ownStamp: Long?) {
         withContext(NonCancellable) {
+            // #1076: the claim row can commit and the verdict still be cancelled before record() returns. Then the stored
+            // claim names this entry, and removing it would leave a claim for an entry that is gone. Read the stored
+            // decision rather than trust the local flag, which only records that record() returned.
+            if (ownStamp != null && claimNamesEntry(mediaId, ownStamp)) return@withContext
             val liveStamp = addedAtOf(mediaId) ?: return@withContext
             // A stamp read after the add must still match, so an entry someone else added in the meantime is not removed.
             if (ownStamp != null && liveStamp != ownStamp) return@withContext
@@ -222,6 +226,15 @@ class RecordDecisionUseCase(
             runCatching { collectionApi.remove(mediaId) }.onFailure { CrashReporter.recordException(it) }
         }
     }
+
+    /**
+     * Whether the stored decision claims the entry added with [stamp]. A read that fails is reported and answers false, so
+     * the rollback still runs: the failure that caused it stays the one thrown, and this is the pre-#1076 behaviour.
+     */
+    private suspend fun claimNamesEntry(mediaId: MediaId, stamp: Long): Boolean = runCatching {
+        val stored = repository.observeDecision(mediaId).first()
+        stored?.createdEntry == true && stored.entryAddedAtEpochMs == stamp
+    }.onFailure { CrashReporter.recordException(it) }.getOrDefault(false)
 
     /** The added-at stamp of [mediaId]'s live library entry, or null when it is not saved. */
     private suspend fun addedAtOf(mediaId: MediaId): Long? = collectionApi.observeSummaries().first()
