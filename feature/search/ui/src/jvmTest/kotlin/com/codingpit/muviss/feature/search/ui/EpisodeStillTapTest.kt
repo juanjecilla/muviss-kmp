@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -19,6 +20,7 @@ import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -50,6 +52,23 @@ class EpisodeStillTapTest {
     }
 
     @Test
+    fun the_still_is_named_still_while_its_picture_is_loading() = runComposeUiTest {
+        // The still's request is held, so the screen shows the loading state: the state in which the picture's own
+        // description (the episode title) used to be read as part of the button's name.
+        val gate = CompletableDeferred<Unit>()
+        val loader = installLoader(mapOf(drawnImageUrl(STILL, PosterSize.Still)!! to Answer.Waits(gate, Size(300f, 169f))))
+        try {
+            setContent { EpisodeWithStill(stillUrl = STILL) { _, _ -> } }
+            waitUntil(timeoutMillis = 10_000) { drawnImageUrl(STILL, PosterSize.Still) in loader.requested }
+            waitForIdle()
+
+            onNodeWithContentDescription("Still").assertContentDescriptionEquals("Still")
+        } finally {
+            gate.complete(Unit)
+        }
+    }
+
+    @Test
     fun tapping_the_still_opens_the_still_gallery_on_the_url_drawn() = runComposeUiTest {
         val opened = mutableListOf<Pair<ImageKind, String>>()
         setContent { EpisodeWithStill(stillUrl = STILL) { kind, url -> opened += kind to url } }
@@ -57,7 +76,7 @@ class EpisodeStillTapTest {
 
         onNodeWithContentDescription("Still").performClick()
 
-        assertEquals(listOf(ImageKind.Still to drawnImageUrl(STILL, PosterSize.Detail)), opened)
+        assertEquals(listOf(ImageKind.Still to drawnImageUrl(STILL, PosterSize.Still)), opened)
     }
 
     private companion object {

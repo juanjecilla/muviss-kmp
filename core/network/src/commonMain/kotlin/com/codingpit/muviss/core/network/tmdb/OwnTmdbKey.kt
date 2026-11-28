@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.models.MetadataError
 import io.ktor.client.HttpClient
@@ -35,6 +36,12 @@ sealed interface SaveOwnKeyResult {
 
     /** Offline, throttled or TMDB failing: the key could not be checked, so it was not saved. */
     data object CouldNotCheck : SaveOwnKeyResult
+
+    /**
+     * TMDB accepted the key, but Delete all data ran while it was being checked (#1056), so it was not kept. Not a
+     * failed check: the screen that asked is being cleared by that erase, and it must not say the key was saved.
+     */
+    data object Erased : SaveOwnKeyResult
 }
 
 /**
@@ -52,9 +59,11 @@ sealed interface SaveOwnKeyResult {
  */
 class OwnTmdbKey internal constructor(
     private val store: SecretStore,
+    private val erasures: DataEraseFence,
     private val validator: TmdbKeyValidator,
 ) {
-    constructor(store: SecretStore, client: HttpClient) : this(store, HttpTmdbKeyValidator(client))
+    constructor(store: SecretStore, client: HttpClient, erasures: DataEraseFence) :
+        this(store, erasures, HttpTmdbKeyValidator(client))
 
     private val lock = Mutex()
     private val current = MutableStateFlow<Loaded?>(null)
@@ -93,13 +102,17 @@ class OwnTmdbKey internal constructor(
      */
     suspend fun save(raw: String): SaveOwnKeyResult {
         val candidate = TmdbKeyShape.detect(raw) ?: return SaveOwnKeyResult.Malformed
-        return when (validator.validate(candidate)) {
+        // A key TMDB accepted, but checked before Delete all data, is not kept (#1056): the fence's count is taken before TMDB is asked.
+        val checked = erasures.guardedFetch { validator.validate(candidate) }
+        return when (checked.value) {
             KeyCheck.Accepted -> {
-                lock.withLock {
-                    store.put(STORE_NAME, raw.trim())
-                    current.value = Loaded(candidate)
+                val kept = checked.write {
+                    lock.withLock {
+                        store.put(STORE_NAME, raw.trim())
+                        current.value = Loaded(candidate)
+                    }
                 }
-                SaveOwnKeyResult.Saved
+                if (kept) SaveOwnKeyResult.Saved else SaveOwnKeyResult.Erased
             }
 
             KeyCheck.Rejected -> SaveOwnKeyResult.Rejected
